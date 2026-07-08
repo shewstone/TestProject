@@ -93,10 +93,14 @@ select = [
     "I",   # isort
     "N",   # pep8-naming
     "W",   # pycodestyle warnings
-    "UP",  # pyupgrade
     "B",   # flake8-bugbear
     "C4",  # flake8-comprehensions
     "SIM", # flake8-simplify
+]
+ignore = [
+    "UP006",  # Use list instead of List (deferred)
+    "UP035",  # Use dict instead of Dict (deferred)
+    "UP007",  # Use X | Y instead of Union (deferred)
 ]
 
 [tool.mypy]
