@@ -10,6 +10,15 @@ from uuid import UUID, uuid4
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class ThesisConfidence(str, Enum):
+    """Confidence level in a generated thesis."""
+
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
+    UNKNOWN = "unknown"
+
+
 class ArcPhase(str, Enum):
     """Standard phases in narrative arcs."""
 
@@ -52,6 +61,14 @@ class CycleScale(str, Enum):
     INSTITUTIONAL = "institutional"  # ~decades
     GENERATIONAL = "generational"  # ~20-25 years
     EPISODIC = "episodic"  # individual events
+
+
+class Continuation(BaseModel):
+    """A possible continuation/outcome with probability."""
+
+    description: str
+    probability: float
+    supporting_analogs: int = 0
 
 
 class Actor(BaseModel):
