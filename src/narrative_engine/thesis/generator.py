@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import List, Optional, Dict, Any
-from datetime import datetime
-from uuid import UUID, uuid4
+from dataclasses import dataclass
+from typing import Dict, List, Optional
+from uuid import uuid4
 
 import structlog
 
-from narrative_engine.models import Episode, Thesis, Continuation, ThesisConfidence
+from narrative_engine.models import Continuation, Episode, Thesis, ThesisConfidence
 from narrative_engine.retrieval.analog_retrieval import RetrievedAnalog
 
 logger = structlog.get_logger()
@@ -190,9 +189,7 @@ class ThesisGenerator:
 
         # Calculate probabilities for each cluster
         continuations = []
-        total_weight = sum(
-            sum(e.probability_weight for e in cluster) for cluster in clusters.values()
-        )
+        total_weight = sum(sum(e.probability_weight for e in cluster) for cluster in clusters.values())
 
         for desc, cluster in clusters.items():
             weight = sum(e.probability_weight for e in cluster)

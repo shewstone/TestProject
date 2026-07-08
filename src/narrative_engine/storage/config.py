@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import Optional
 
 
 @dataclass(frozen=True)
@@ -30,9 +29,7 @@ class DatabaseConfig:
         if database_url.startswith("postgresql://"):
             database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
         elif database_url.startswith("postgresql+psycopg2://"):
-            database_url = database_url.replace(
-                "postgresql+psycopg2://", "postgresql+asyncpg://", 1
-            )
+            database_url = database_url.replace("postgresql+psycopg2://", "postgresql+asyncpg://", 1)
 
         return cls(
             database_url=database_url,

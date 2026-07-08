@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any, Dict, List, Optional, Type, TypeVar
 from abc import ABC, abstractmethod
+from typing import Any, Dict, List, Optional, Type, TypeVar
 
 import openai
 import structlog

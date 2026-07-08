@@ -1,19 +1,20 @@
 """Unit tests for evaluation metrics and backtesting."""
 
-import pytest
 from datetime import datetime
 from uuid import uuid4
 
+import pytest
+
+from narrative_engine.evaluation.backtest import (
+    BacktestEngine,
+    BacktestResult,
+    HistoricalDataset,
+)
 from narrative_engine.evaluation.metrics import (
     BrierScore,
     CalibrationAnalyzer,
     CalibrationPoint,
     compute_skill_score,
-)
-from narrative_engine.evaluation.backtest import (
-    BacktestEngine,
-    BacktestResult,
-    HistoricalDataset,
 )
 from narrative_engine.models import Thesis, ThesisConfidence
 
@@ -189,9 +190,7 @@ class TestBacktestEngine:
         assert matched is True
         assert idx == 0
 
-        matched, idx = engine._match_outcome(
-            "Peaceful transition", ["Market crashes", "Soft landing"]
-        )
+        matched, idx = engine._match_outcome("Peaceful transition", ["Market crashes", "Soft landing"])
         assert matched is False
         assert idx == -1
 
@@ -261,9 +260,7 @@ class TestHistoricalDataset:
         dataset = HistoricalDataset()
 
         for i in range(10):
-            dataset.add_episode(
-                Episode(id=uuid4(), title=f"Episode {i}", summary="Test"), "Outcome"
-            )
+            dataset.add_episode(Episode(id=uuid4(), title=f"Episode {i}", summary="Test"), "Outcome")
 
         train, test = dataset.get_train_test_split(test_ratio=0.3)
 

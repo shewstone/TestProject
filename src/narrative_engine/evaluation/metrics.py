@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
-import math
+from typing import List, Tuple
 
 from narrative_engine.models import Thesis, ThesisConfidence
 
@@ -136,9 +135,7 @@ class ThesisEvaluator:
         Returns Brier score and matched continuation.
         """
         # Find which predicted continuation matches actual outcome
-        all_continuations = [
-            (thesis.dominant_continuation.description, thesis.dominant_continuation.probability)
-        ]
+        all_continuations = [(thesis.dominant_continuation.description, thesis.dominant_continuation.probability)]
         all_continuations.extend(thesis.alternative_continuations)
 
         # Simple matching: check if actual outcome is close to any prediction
@@ -196,7 +193,7 @@ class ThesisEvaluator:
             ThesisConfidence.UNKNOWN: {"correct": 0, "total": 0},
         }
 
-        for thesis in theses:
+        for _thesis in theses:
             # Would need actual outcome to compute accuracy
             # Placeholder for structure
             pass

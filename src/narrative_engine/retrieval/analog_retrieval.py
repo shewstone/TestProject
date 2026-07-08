@@ -2,17 +2,17 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from contextlib import suppress
+from dataclasses import dataclass
 from typing import List, Optional
 from uuid import UUID
 
 import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from narrative_engine.models import Episode, ArcType, ArcPhase, CycleScale
+from narrative_engine.models import ArcPhase, ArcType, CycleScale, Episode
 from narrative_engine.retrieval.embeddings import EmbeddingGenerator
-from narrative_engine.storage.repositories import EpisodeRepository, CycleRepository
+from narrative_engine.storage.repositories import CycleRepository, EpisodeRepository
 
 logger = structlog.get_logger()
 
@@ -297,7 +297,7 @@ class AnalogRetrievalEngine:
 
         Episodes in the same cycle scale are more directly comparable.
         """
-        cycle_repo = CycleRepository(session)
+        CycleRepository(session)
 
         # Get cycles for both episodes
         # This would require episode.cycles relationship to be loaded
@@ -339,7 +339,9 @@ class AnalogRetrievalEngine:
     ) -> List[Episode]:
         """Retrieve episodes temporally close to query."""
         from datetime import timedelta
+
         from sqlalchemy import select
+
         from narrative_engine.storage.orm_models import EpisodeORM
 
         if not episode.start_date:
@@ -356,7 +358,7 @@ class AnalogRetrievalEngine:
         )
 
         episodes = []
-        for orm_episode in result.scalars().all():
+        for _orm_episode in result.scalars().all():
             # Convert to Pydantic model (would need repository method)
             pass
 

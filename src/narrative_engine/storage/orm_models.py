@@ -8,8 +8,8 @@ from typing import List, Optional
 
 from pgvector.sqlalchemy import Vector  # type: ignore
 from sqlalchemy import (
-    Column,
     JSON,
+    Column,
     DateTime,
     Enum,
     Float,
@@ -19,7 +19,6 @@ from sqlalchemy import (
     String,
     Table,
     Text,
-    UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -288,9 +287,7 @@ class ThesisORM(Base):
 
     # Evaluation
     resolved: Mapped[bool] = mapped_column(default=False)
-    resolution_date: Mapped[Optional[datetime]] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    resolution_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     resolution_outcome: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     brier_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 

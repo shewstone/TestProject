@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
-from typing import List, Optional, Dict, Tuple
+from datetime import datetime
+from typing import Dict, List, Tuple
 from uuid import UUID
 
 import structlog
 
-from narrative_engine.models import Thesis, Episode, ThesisConfidence
-from narrative_engine.evaluation.metrics import BrierScore, CalibrationAnalyzer
+from narrative_engine.evaluation.metrics import BrierScore
+from narrative_engine.models import Episode, Thesis, ThesisConfidence
 
 logger = structlog.get_logger()
 
@@ -215,8 +215,7 @@ class BacktestEngine:
                 by_confidence[conf.value] = {
                     "count": len(conf_results),
                     "avg_brier": sum(r.brier_score for r in conf_results) / len(conf_results),
-                    "accuracy": sum(1 for r in conf_results if r.outcome_matched)
-                    / len(conf_results),
+                    "accuracy": sum(1 for r in conf_results if r.outcome_matched) / len(conf_results),
                 }
 
         return {

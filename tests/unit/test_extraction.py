@@ -1,16 +1,16 @@
 """Unit tests for extraction pipeline."""
 
 import json
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
-from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock, patch
 
 from narrative_engine.extraction.client import (
     ExtractionPipeline,
-    OpenAIClient,
     LLMError,
+    OpenAIClient,
 )
-from narrative_engine.extraction.config import LLMConfig, ExtractionPipelineConfig
+from narrative_engine.extraction.config import ExtractionPipelineConfig, LLMConfig
 from narrative_engine.extraction.pipeline import ExtractionOrchestrator, PipelineResult
 
 
@@ -251,9 +251,7 @@ class TestExtractionOrchestrator:
     async def test_process_text_full_pipeline(self, mock_pipeline):
         """Test full pipeline execution."""
         # Mock segmentation
-        mock_pipeline.segment.return_value = {
-            "episodes": [{"number": 1, "summary": "Test", "text": "Test"}]
-        }
+        mock_pipeline.segment.return_value = {"episodes": [{"number": 1, "summary": "Test", "text": "Test"}]}
 
         # Mock extraction
         mock_pipeline.extract.return_value = {
