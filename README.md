@@ -49,6 +49,19 @@ alembic upgrade head
 pytest -v
 ```
 
+### Docker Quick Start
+
+```bash
+# Build and run with Docker Compose
+docker compose up --build -d
+
+# Run tests in container
+docker compose exec app pytest -v
+
+# Stop services
+docker compose down -v
+```
+
 ### Example Usage
 
 ```python
@@ -75,6 +88,53 @@ async with db_manager.session() as session:
     )
 ```
 
+### Full Pipeline Example
+
+```python
+from narrative_engine.extraction.pipeline import ExtractionOrchestrator
+from narrative_engine.retrieval.embeddings import EmbeddingGenerator
+from narrative_engine.retrieval.analog_retrieval import AnalogRetrievalEngine
+from narrative_engine.thesis.generator import ThesisGenerator
+from narrative_engine.storage.database import db_manager
+
+# 1. Extract episodes from text
+orchestrator = ExtractionOrchestrator()
+
+async with db_manager.session() as session:
+    result = await orchestrator.process_text(
+        text="Historical narrative...",
+        source_chunk_id="kindleberger-1978",
+        session=session,
+    )
+    print(f"Extracted {len(result.episodes)} episodes")
+
+# 2. Generate embeddings for semantic search
+embedder = EmbeddingGenerator()
+for episode in result.episodes:
+    embedding = embedder.generate_for_episode(episode)
+    # Store in database...
+
+# 3. Retrieve historical analogs
+async with db_manager.session() as session:
+    engine = AnalogRetrievalEngine()
+    analogs = await engine.retrieve_analogs(
+        query_episode=result.episodes[0],
+        session=session,
+        k=10,
+    )
+
+# 4. Generate thesis from analogs
+generator = ThesisGenerator(min_analogs=3)
+thesis = generator.generate(
+    query_episode=result.episodes[0],
+    analogs=analogs,
+)
+
+print(f"Dominant: {thesis.dominant_continuation.description}")
+print(f"Confidence: {thesis.confidence.value}")
+print(f"Watch for: {thesis.watch_conditions}")
+```
+
 ## Development
 
 ### Project Structure
@@ -82,9 +142,26 @@ async with db_manager.session() as session:
 - **Phase 1** ✅: Core models (Episode, Arc, Cycle, Thesis)
 - **Phase 2** ✅: Database layer (SQLAlchemy, pgvector, ORM)
 - **Phase 3** ✅: Repository pattern (CRUD, semantic search)
-- **Phase 4** 🔄: LLM extraction pipeline
-- **Phase 5**: Analog retrieval and thesis generation
-- **Phase 6**: Evaluation and backtesting
+- **Phase 4** ✅: LLM extraction pipeline
+- **Phase 5** ✅: Vector embeddings and analog retrieval
+- **Phase 6** ✅: Thesis generation from historical analogs
+- **Phase 7** 🔄: Evaluation and backtesting
+
+### Architecture
+
+```
+┌─────────────┐     ┌──────────────┐     ┌─────────────┐
+│   Text In   │────▶│  Extraction  │────▶│  Episodes   │
+│  (books)    │     │ (LLM Pipeline)│     │ (Database)  │
+└─────────────┘     └──────────────┘     └──────┬──────┘
+                                                 │
+                          ┌────────────────────┘
+                          ▼
+┌─────────────┐     ┌──────────────┐     ┌─────────────┐
+│  Thesis     │◀────│   Retrieval  │◀────│ Embeddings  │
+│ (Forecast)  │     │ (Analogs)    │     │ (pgvector)  │
+└─────────────┘     └──────────────┘     └─────────────┘
+```
 
 ### PR History
 
