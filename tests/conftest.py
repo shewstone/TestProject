@@ -12,7 +12,6 @@ from sqlalchemy.orm import sessionmaker
 from narrative_engine.storage.database import Base, DatabaseManager
 from narrative_engine.storage.config import DatabaseConfig
 
-
 # Use test database URL from environment or default
 # CI PostgreSQL service: postgres/postgres@localhost:5432
 TEST_DATABASE_URL = os.getenv(

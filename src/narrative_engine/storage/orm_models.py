@@ -27,7 +27,6 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from narrative_engine.models import ArcPhase, ArcType, CycleScale
 from narrative_engine.storage.database import Base
 
-
 # Association table for many-to-many relationships
 episode_actor_association = Table(
     "episode_actor_association",
