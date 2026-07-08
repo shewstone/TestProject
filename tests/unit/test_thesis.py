@@ -1,7 +1,6 @@
 """Unit tests for thesis generation."""
 
 import pytest
-from datetime import datetime
 from uuid import uuid4
 
 from narrative_engine.models import (
