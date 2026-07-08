@@ -31,13 +31,13 @@ from narrative_engine.storage.database import Base
 episode_actor_association = Table(
     "episode_actor_association",
     Base.metadata,
-    MappedColumn(
+    mapped_column(
         "episode_id",
         UUID(as_uuid=True),
         ForeignKey("episodes.id", ondelete="CASCADE"),
         primary_key=True,
     ),
-    MappedColumn(
+    mapped_column(
         "actor_id",
         UUID(as_uuid=True),
         ForeignKey("actors.id", ondelete="CASCADE"),
@@ -49,13 +49,13 @@ episode_actor_association = Table(
 cycle_episode_association = Table(
     "cycle_episode_association",
     Base.metadata,
-    MappedColumn(
+    mapped_column(
         "cycle_id",
         UUID(as_uuid=True),
         ForeignKey("cycles.id", ondelete="CASCADE"),
         primary_key=True,
     ),
-    MappedColumn(
+    mapped_column(
         "episode_id",
         UUID(as_uuid=True),
         ForeignKey("episodes.id", ondelete="CASCADE"),
