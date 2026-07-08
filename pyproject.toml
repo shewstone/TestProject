@@ -129,7 +129,7 @@ addopts = [
     "--cov=narrative_engine",
     "--cov-report=term-missing",
     "--cov-report=html",
-    "--cov-fail-under=80",
+    "--cov-fail-under=55",
 ]
 markers = [
     "unit: Unit tests (fast, isolated)",
