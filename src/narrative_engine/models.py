@@ -232,9 +232,7 @@ class Thesis(BaseModel):
 
     # Thesis content
     dominant_continuation: str
-    alternative_continuations: List[tuple[str, float]] = Field(
-        default_factory=list
-    )  # (scenario, frequency)
+    alternative_continuations: List[tuple[str, float]] = Field(default_factory=list)  # (scenario, frequency)
     watch_for_indicators: List[str] = Field(default_factory=list)
     confidence_interval: Optional[tuple[float, float]] = None
 

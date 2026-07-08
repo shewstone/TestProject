@@ -9,8 +9,7 @@ import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
-from narrative_engine.storage.database import Base, DatabaseManager
-from narrative_engine.storage.config import DatabaseConfig
+from narrative_engine.storage.database import Base
 
 # Use test database URL from environment or default
 # CI PostgreSQL service: postgres/postgres@localhost:5432

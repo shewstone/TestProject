@@ -69,9 +69,7 @@ class EmbeddingGenerator:
             components.append(f"Phase: {episode.arc_phase.value}")
 
         if episode.actors:
-            actor_roles = ", ".join(
-                [f"{a.role}:{a.name}" for a in episode.actors[:5]]  # Top 5 actors
-            )
+            actor_roles = ", ".join([f"{a.role}:{a.name}" for a in episode.actors[:5]])  # Top 5 actors
             components.append(f"Actors: {actor_roles}")
 
         if episode.initiating_conditions:

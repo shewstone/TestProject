@@ -112,8 +112,6 @@ def format_analogs(analogs: list) -> str:
         lines.append(f"   Arc: {episode.arc_type.value if episode.arc_type else 'unknown'}")
         lines.append(f"   Phase: {episode.arc_phase.value if episode.arc_phase else 'unknown'}")
         lines.append(f"   Outcome: {episode.resolution or 'unknown'}")
-        lines.append(
-            f"   Consequences: {', '.join(episode.consequences[:2]) if episode.consequences else 'unknown'}"
-        )
+        lines.append(f"   Consequences: {', '.join(episode.consequences[:2]) if episode.consequences else 'unknown'}")
         lines.append("")
     return "\n".join(lines)

@@ -5,17 +5,15 @@ from __future__ import annotations
 from typing import List, Optional, Sequence
 from uuid import UUID
 
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload, selectinload
+from sqlalchemy.orm import joinedload
 
-from narrative_engine.models import Episode, Cycle, Actor, Thesis, ArcDefinition
+from narrative_engine.models import Actor, Cycle, Episode, Thesis
 from narrative_engine.storage.orm_models import (
-    EpisodeORM,
     CycleORM,
-    ActorORM,
+    EpisodeORM,
     ThesisORM,
-    ArcDefinitionORM,
 )
 
 
@@ -122,7 +120,6 @@ class EpisodeRepository:
 
     def _to_orm(self, episode: Episode) -> EpisodeORM:
         """Convert Pydantic model to ORM."""
-        from narrative_engine.storage.orm_models import SourcePassageORM
 
         return EpisodeORM(
             id=episode.id,
@@ -150,7 +147,7 @@ class EpisodeRepository:
 
     def _from_orm(self, orm: EpisodeORM) -> Episode:
         """Convert ORM to Pydantic model."""
-        from narrative_engine.models import Actor, SourcePassage
+        from narrative_engine.models import SourcePassage
 
         return Episode(
             id=orm.id,
@@ -262,16 +259,12 @@ class CycleRepository:
         limit: int = 100,
     ) -> Sequence[Cycle]:
         """Get cycles by scale."""
-        result = await self.session.execute(
-            select(CycleORM).where(CycleORM.scale == scale).limit(limit)
-        )
+        result = await self.session.execute(select(CycleORM).where(CycleORM.scale == scale).limit(limit))
         return [self._from_orm(c) for c in result.scalars().all()]
 
     async def get_children(self, cycle_id: UUID) -> Sequence[Cycle]:
         """Get child cycles."""
-        result = await self.session.execute(
-            select(CycleORM).where(CycleORM.parent_cycle_id == cycle_id)
-        )
+        result = await self.session.execute(select(CycleORM).where(CycleORM.parent_cycle_id == cycle_id))
         return [self._from_orm(c) for c in result.scalars().all()]
 
     async def add_episode(self, cycle_id: UUID, episode_id: UUID) -> None:
@@ -296,7 +289,7 @@ class CycleRepository:
             end_date=orm.end_date,
             parent_cycle_id=orm.parent_cycle_id,
             child_cycle_ids=set(),  # Would need separate query
-            episode_ids=set(e.id for e in (orm.episodes or [])),
+            episode_ids={e.id for e in (orm.episodes or [])},
             dominant_arc_types=orm.dominant_arc_types,
             phase_estimate=orm.phase_estimate,
             framework_source=orm.framework_source,
@@ -341,10 +334,7 @@ class ThesisRepository:
     async def get_unresolved(self, limit: int = 100) -> Sequence[Thesis]:
         """Get unresolved theses for monitoring."""
         result = await self.session.execute(
-            select(ThesisORM)
-            .where(ThesisORM.resolved == False)
-            .order_by(ThesisORM.created_at.desc())
-            .limit(limit)
+            select(ThesisORM).where(not ThesisORM.resolved).order_by(ThesisORM.created_at.desc()).limit(limit)
         )
         return [self._from_orm(t) for t in result.scalars().all()]
 
@@ -378,7 +368,7 @@ class ThesisRepository:
                 func.count(ThesisORM.id).label("total"),
                 func.avg(ThesisORM.brier_score).label("avg_brier"),
                 func.count(ThesisORM.brier_score).label("scored"),
-            ).where(ThesisORM.resolved == True)
+            ).where(ThesisORM.resolved)
         )
         row = result.one()
 

@@ -1,19 +1,16 @@
 """Unit tests for thesis generation."""
 
-import pytest
-from datetime import datetime
 from uuid import uuid4
 
 from narrative_engine.models import (
-    Episode,
-    ArcType,
     ArcPhase,
-    Thesis,
-    ThesisConfidence,
+    ArcType,
     Continuation,
+    Episode,
+    ThesisConfidence,
 )
 from narrative_engine.retrieval.analog_retrieval import RetrievedAnalog
-from narrative_engine.thesis.generator import ThesisGenerator, AnalogEvidence
+from narrative_engine.thesis.generator import AnalogEvidence, ThesisGenerator
 
 
 class TestThesisGenerator:
@@ -76,9 +73,7 @@ class TestThesisGenerator:
         generator = ThesisGenerator()
 
         assert (
-            generator._similar_continuation(
-                "Market crashed and recovered", "Stock market crashed then recovered"
-            )
+            generator._similar_continuation("Market crashed and recovered", "Stock market crashed then recovered")
             is True
         )
 
@@ -155,9 +150,7 @@ class TestThesisGenerator:
             for a in analogs
         ]
 
-        continuations = [
-            Continuation(description="Recovery", probability=0.8, supporting_analogs=5)
-        ]
+        continuations = [Continuation(description="Recovery", probability=0.8, supporting_analogs=5)]
 
         confidence = generator._calculate_confidence(evidence, continuations)
         assert confidence in [ThesisConfidence.HIGH, ThesisConfidence.MEDIUM]

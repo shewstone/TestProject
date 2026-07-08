@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from dataclasses import dataclass
+from typing import Optional
 
 
 @dataclass(frozen=True)
@@ -33,9 +33,7 @@ class LLMConfig:
             model=os.getenv(f"{prefix}LLM_MODEL", default_models.get(provider, "gpt-4")),
             temperature=float(os.getenv(f"{prefix}LLM_TEMPERATURE", "0.0")),
             max_tokens=int(os.getenv(f"{prefix}LLM_MAX_TOKENS", "4000")),
-            api_key=os.getenv(f"{prefix}LLM_API_KEY")
-            or os.getenv("OPENAI_API_KEY")
-            or os.getenv("ANTHROPIC_API_KEY"),
+            api_key=os.getenv(f"{prefix}LLM_API_KEY") or os.getenv("OPENAI_API_KEY") or os.getenv("ANTHROPIC_API_KEY"),
         )
 
 
@@ -76,8 +74,7 @@ class ExtractionPipelineConfig:
         return cls(
             enable_segmentation=os.getenv(f"{prefix}ENABLE_SEGMENTATION", "true").lower() == "true",
             enable_extraction=os.getenv(f"{prefix}ENABLE_EXTRACTION", "true").lower() == "true",
-            enable_classification=os.getenv(f"{prefix}ENABLE_CLASSIFICATION", "true").lower()
-            == "true",
+            enable_classification=os.getenv(f"{prefix}ENABLE_CLASSIFICATION", "true").lower() == "true",
             enable_linking=os.getenv(f"{prefix}ENABLE_LINKING", "true").lower() == "true",
             segmentation_model=os.getenv(f"{prefix}SEG_MODEL", "gpt-3.5-turbo"),
             extraction_model=os.getenv(f"{prefix}EXTRACT_MODEL", "gpt-4"),

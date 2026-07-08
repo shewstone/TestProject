@@ -68,7 +68,7 @@ def get_extraction_prompt(segment_text: str, segment_summary: str) -> str:
 3. **actors** (array): List of significant actors with:
    - name: Actor name
    - role: Their role (e.g., "protagonist", "antagonist", "institution", "nation")
-   
+
 4. **setting** (object):
    - location: Where it took place
    - time_period: When (e.g., "1921-1923", "October 1929", "Q4 2008")

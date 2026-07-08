@@ -1,15 +1,16 @@
 """Unit tests for repository layer."""
 
-import pytest
 from datetime import datetime
 from uuid import uuid4
 
-from narrative_engine.models import Episode, Cycle, Actor, ArcType, ArcPhase, CycleScale, Thesis
+import pytest
+
+from narrative_engine.models import ArcPhase, ArcType, Cycle, CycleScale, Episode, Thesis
 from narrative_engine.storage.repositories import (
-    EpisodeRepository,
     CycleRepository,
-    ThesisRepository,
+    EpisodeRepository,
     RepositoryFactory,
+    ThesisRepository,
 )
 
 

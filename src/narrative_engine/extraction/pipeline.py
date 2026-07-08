@@ -5,16 +5,14 @@ from __future__ import annotations
 from contextlib import suppress
 from datetime import datetime
 from typing import Any, Dict, List, Optional
-from uuid import UUID
 
 import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from narrative_engine.extraction.client import ExtractionPipeline, LLMClient
+from narrative_engine.extraction.client import ExtractionPipeline
 from narrative_engine.extraction.config import ExtractionPipelineConfig
-from narrative_engine.models import Episode, Actor, ArcType, ArcPhase, SourcePassage
+from narrative_engine.models import Actor, ArcPhase, ArcType, Episode
 from narrative_engine.storage.repositories import (
-    EpisodeRepository,
     RepositoryFactory,
 )
 
@@ -165,9 +163,7 @@ class ExtractionOrchestrator:
         # Parse dates
         setting = extraction_result.get("setting", {})
         if setting.get("time_period"):
-            episode = await self._parse_dates(
-                episode, setting["time_period"], setting.get("date_precision", "year")
-            )
+            episode = await self._parse_dates(episode, setting["time_period"], setting.get("date_precision", "year"))
 
         # Parse actors
         actors_data = extraction_result.get("actors", [])

@@ -1,20 +1,19 @@
 """Integration test for full narrative engine pipeline."""
 
-import pytest
 from datetime import datetime
 from uuid import uuid4
 
+import pytest
+
 from narrative_engine.models import (
-    Episode,
-    Actor,
-    ArcType,
     ArcPhase,
+    ArcType,
     Cycle,
     CycleScale,
+    Episode,
 )
-from narrative_engine.storage.repositories import RepositoryFactory
 from narrative_engine.retrieval.embeddings import EmbeddingGenerator
-from narrative_engine.retrieval.analog_retrieval import AnalogRetrievalEngine
+from narrative_engine.storage.repositories import RepositoryFactory
 from narrative_engine.thesis.generator import ThesisGenerator
 
 

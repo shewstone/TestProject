@@ -1,11 +1,19 @@
 """Integration tests for database operations."""
 
-import pytest
 from datetime import datetime
 
-from narrative_engine.models import Episode, Cycle, ArcType, ArcPhase, CycleScale
-from narrative_engine.storage.database import DatabaseManager
+import pytest
+
+from narrative_engine.models import (
+    ArcPhase,
+    ArcType,
+    Cycle,
+    CycleScale,
+    Episode,
+    Thesis,
+)
 from narrative_engine.storage.config import DatabaseConfig
+from narrative_engine.storage.database import DatabaseManager
 from narrative_engine.storage.repositories import RepositoryFactory
 
 

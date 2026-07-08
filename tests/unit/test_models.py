@@ -1,8 +1,9 @@
 """Unit tests for core data models."""
 
-import pytest
 from datetime import datetime
 from uuid import UUID, uuid4
+
+import pytest
 
 from narrative_engine.models import (
     Actor,
@@ -12,9 +13,9 @@ from narrative_engine.models import (
     Cycle,
     CycleScale,
     Episode,
+    ExtractionRecord,
     SourcePassage,
     Thesis,
-    ExtractionRecord,
 )
 
 
@@ -41,7 +42,7 @@ class TestActor:
     def test_actor_immutable(self) -> None:
         """Test that actors are immutable (frozen)."""
         actor = Actor(name="Test", role="test")
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             actor.name = "Changed"
 
 
