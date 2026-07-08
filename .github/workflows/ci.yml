@@ -41,5 +41,4 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - run: |
           pip install -e ".[dev]"
-          pytest -m "not 
-integration" --cov=narrative_engine
+          pytest -m "not integration" --cov=narrative_engine
