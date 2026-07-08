@@ -49,4 +49,4 @@ jobs:
       - name: Run tests
         env:
           DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/narrative_engine_test
-        run: pytest tests/ -v --tb=short timeout-minutes:10
+        run: pytest tests/ -v --tb=short
