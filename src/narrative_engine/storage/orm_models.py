@@ -8,6 +8,7 @@ from typing import List, Optional
 
 from pgvector.sqlalchemy import Vector  # type: ignore
 from sqlalchemy import (
+    Column,
     JSON,
     DateTime,
     Enum,
@@ -31,13 +32,13 @@ from narrative_engine.storage.database import Base
 episode_actor_association = Table(
     "episode_actor_association",
     Base.metadata,
-    mapped_column(
+    Column(
         "episode_id",
         UUID(as_uuid=True),
         ForeignKey("episodes.id", ondelete="CASCADE"),
         primary_key=True,
     ),
-    mapped_column(
+    Column(
         "actor_id",
         UUID(as_uuid=True),
         ForeignKey("actors.id", ondelete="CASCADE"),
@@ -49,13 +50,13 @@ episode_actor_association = Table(
 cycle_episode_association = Table(
     "cycle_episode_association",
     Base.metadata,
-    mapped_column(
+    Column(
         "cycle_id",
         UUID(as_uuid=True),
         ForeignKey("cycles.id", ondelete="CASCADE"),
         primary_key=True,
     ),
-    mapped_column(
+    Column(
         "episode_id",
         UUID(as_uuid=True),
         ForeignKey("episodes.id", ondelete="CASCADE"),
