@@ -7,7 +7,7 @@ from uuid import UUID
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, selectinload
 
 from narrative_engine.models import Actor, Cycle, Episode, Thesis
 from narrative_engine.storage.orm_models import (
@@ -37,9 +37,9 @@ class EpisodeRepository:
             select(EpisodeORM)
             .where(EpisodeORM.id == episode_id)
             .options(
-                joinedload(EpisodeORM.actors),
-                joinedload(EpisodeORM.source_passages),
-                joinedload(EpisodeORM.cycles),
+                selectinload(EpisodeORM.actors),
+                selectinload(EpisodeORM.source_passages),
+                selectinload(EpisodeORM.cycles),
             )
         )
         orm_episode = result.scalar_one_or_none()
@@ -55,11 +55,16 @@ class EpisodeRepository:
         result = await self.session.execute(
             select(EpisodeORM)
             .where(EpisodeORM.arc_type == arc_type)
+            .options(
+                selectinload(EpisodeORM.actors),
+                selectinload(EpisodeORM.source_passages),
+                selectinload(EpisodeORM.cycles),
+            )
             .limit(limit)
             .offset(offset)
             .order_by(EpisodeORM.start_date)
         )
-        return [self._from_orm(e) for e in result.scalars().all()]
+        return [self._from_orm(e) for e in result.scalars().unique().all()]
 
     async def get_by_arc_phase(
         self,
@@ -71,11 +76,16 @@ class EpisodeRepository:
         result = await self.session.execute(
             select(EpisodeORM)
             .where(EpisodeORM.arc_phase == arc_phase)
+            .options(
+                selectinload(EpisodeORM.actors),
+                selectinload(EpisodeORM.source_passages),
+                selectinload(EpisodeORM.cycles),
+            )
             .limit(limit)
             .offset(offset)
             .order_by(EpisodeORM.phase_confidence.desc())
         )
-        return [self._from_orm(e) for e in result.scalars().all()]
+        return [self._from_orm(e) for e in result.scalars().unique().all()]
 
     async def update(self, episode: Episode) -> Episode:
         """Update an existing episode."""
