@@ -1,22 +1,38 @@
-version: '3.8'
+version: "3.8"
 
 services:
-  postgres:
+  db:
     image: pgvector/pgvector:pg16
-    container_name: narrative-engine-db
     environment:
-      POSTGRES_USER: narrative_engine
-      POSTGRES_PASSWORD: narrative_engine
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
       POSTGRES_DB: narrative_engine
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U narrative_engine"]
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
       timeout: 5s
       retries: 5
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/narrative_engine
+      TEST_DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/narrative_engine_test
+      NE_LLM_PROVIDER: openai
+      NE_LLM_MODEL: gpt-4
+    volumes:
+      - ./src:/app/src
+      - ./tests:/app/tests
+    depends_on:
+      db:
+        condition: service_healthy
+    command: python -m pytest -v --tb=short
 
 volumes:
   postgres_data:
