@@ -16,7 +16,7 @@ jobs:
         with:
           python-version: '3.12'
       - run: |
-          pip install black==25.1.0 ruff mypy
+          pip install black ruff mypy
           black --check --diff src tests
           ruff check src tests
           mypy src/narrative_engine
