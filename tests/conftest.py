@@ -9,6 +9,7 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import NullPool
 
 from narrative_engine.storage.database import Base
 
@@ -26,13 +27,12 @@ async def engine():
     engine = create_async_engine(
         TEST_DATABASE_URL,
         echo=False,
-        poolclass=None,  # NullPool for tests
+        poolclass=NullPool,  # NullPool for tests - no connection pooling
     )
 
-    # Create pgvector extension first (separate connection)
-    async with engine.connect() as conn:
+    # Create pgvector extension first
+    async with engine.begin() as conn:
         await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
-        await conn.commit()
 
     # Create tables in a fresh connection
     async with engine.begin() as conn:
