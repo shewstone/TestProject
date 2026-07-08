@@ -105,6 +105,12 @@ class SourcePassageORM(Base):
         nullable=False,
     )
 
+    # Relationships
+    episode: Mapped["EpisodeORM"] = relationship(
+        "EpisodeORM",
+        back_populates="source_passages",
+    )
+
     # Composite index for lookups
     __table_args__ = (Index("ix_source_passages_work_passage", "work_id", "passage_id"),)
 
