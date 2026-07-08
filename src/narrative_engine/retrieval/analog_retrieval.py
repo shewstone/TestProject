@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
+from contextlib import suppress
+from typing import List, Optional
 from uuid import UUID
 
 import structlog
@@ -229,7 +230,7 @@ class AnalogRetrievalEngine:
             # Sequential phases are also useful (shows progression)
             phase_order = self._get_phase_order(query_arc)
             if phase_order:
-                try:
+                with suppress(ValueError):
                     query_idx = phase_order.index(query_phase)
                     cand_idx = phase_order.index(candidate_phase)
                     distance = abs(query_idx - cand_idx)
@@ -237,8 +238,6 @@ class AnalogRetrievalEngine:
                         return 0.7  # Adjacent phase
                     elif distance == 2:
                         return 0.4  # Nearby phase
-                except ValueError:
-                    pass
 
         # Different arcs: just check if phases are similar categories
         query_category = self._categorize_phase(query_phase)
@@ -259,10 +258,8 @@ class AnalogRetrievalEngine:
         # Convert to ArcPhase enums
         phases = []
         for name in phase_names:
-            try:
+            with suppress(ValueError):
                 phases.append(ArcPhase(name))
-            except ValueError:
-                pass
 
         return phases
 
