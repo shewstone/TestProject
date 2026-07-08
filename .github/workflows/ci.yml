@@ -32,7 +32,7 @@ jobs:
         image: pgvector/pgvector:pg16
         env:
           POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: ***
+          POSTGRES_PASSWORD: postgres
           POSTGRES_DB: narrative_engine_test
         options: >-
           --health-cmd pg_isready
