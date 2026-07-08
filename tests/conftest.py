@@ -28,8 +28,9 @@ async def engine():
         poolclass=None,  # NullPool for tests
     )
 
-    # Create all tables
+    # Create pgvector extension and tables
     async with engine.begin() as conn:
+        await conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
         await conn.run_sync(Base.metadata.create_all)
 
     yield engine
