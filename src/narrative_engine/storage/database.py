@@ -34,13 +34,20 @@ class DatabaseManager:
     def engine(self) -> object:
         """Get or create database engine."""
         if self._engine is None:
-            self._engine = create_async_engine(
-                self.config.database_url,
-                echo=self.config.echo,
-                poolclass=NullPool if self.config.pool_size == 0 else None,
-                pool_size=self.config.pool_size if self.config.pool_size > 0 else None,
-                max_overflow=self.config.max_overflow,
-            )
+            if self.config.pool_size == 0:
+                # Use NullPool for tests - no connection pooling
+                self._engine = create_async_engine(
+                    self.config.database_url,
+                    echo=self.config.echo,
+                    poolclass=NullPool,
+                )
+            else:
+                self._engine = create_async_engine(
+                    self.config.database_url,
+                    echo=self.config.echo,
+                    pool_size=self.config.pool_size,
+                    max_overflow=self.config.max_overflow,
+                )
         return self._engine
 
     @property
