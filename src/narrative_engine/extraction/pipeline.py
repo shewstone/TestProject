@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import suppress
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import UUID
@@ -211,7 +212,7 @@ class ExtractionOrchestrator:
         # Handle secondary arcs
         secondary = classification.get("secondary_arcs", [])
         for sec in secondary:
-            try:
+            with suppress(ValueError):
                 episode.secondary_arcs.append(
                     (
                         ArcType(sec.get("type", "unknown")),
@@ -219,8 +220,6 @@ class ExtractionOrchestrator:
                         sec.get("confidence", 0.5),
                     )
                 )
-            except ValueError:
-                pass
 
         # TODO: Second-pass classification with nearest neighbors
         # Requires vector search for similar episodes
