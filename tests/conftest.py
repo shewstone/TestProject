@@ -21,9 +21,9 @@ TEST_DATABASE_URL = os.getenv(
 )
 
 
-@pytest_asyncio.fixture(scope="session")
+@pytest_asyncio.fixture(scope="function")
 async def engine():
-    """Create database engine for test session."""
+    """Create database engine for each test function."""
     engine = create_async_engine(
         TEST_DATABASE_URL,
         echo=False,
@@ -40,7 +40,7 @@ async def engine():
 
     yield engine
 
-    # Drop all tables after tests
+    # Drop all tables after test
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
 
@@ -104,10 +104,5 @@ def sample_thesis_data():
     }
 
 
-# Event loop fixture for pytest-asyncio
-@pytest.fixture(scope="session")
-def event_loop() -> Generator[asyncio.AbstractEventLoop, None, None]:
-    """Create an instance of the default event loop for the test session."""
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
+# pytest-asyncio configuration
+# Using function-scoped event loop to prevent asyncpg connection conflicts
