@@ -6,7 +6,6 @@ from typing import Dict, List
 
 from narrative_engine.extraction.config import DEFAULT_ARC_TAXONOMY
 
-
 # Prompt versions for tracking
 PROMPT_VERSIONS = {
     "segmentation": "1.0.0",
