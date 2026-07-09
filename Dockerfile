@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Install Python dependencies
 WORKDIR /app
-COPY pyproject.toml .
+COPY pyproject.toml README.md .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -e ".[dev,llm]"
 
