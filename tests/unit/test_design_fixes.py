@@ -160,7 +160,7 @@ class TestTauClassFloor:
                 "arc_phase": "setup",
                 "phase_confidence": 0.3,
                 "rationale": "weak fit",
-                "secondary_arcs": [["tragedy", "setup", 0.2]],
+                "secondary_arcs": [{"type": "tragedy", "phase": "setup", "confidence": 0.2}],
             }
         )
         episode = make_episode(arc_type=None)
