@@ -1,11 +1,11 @@
 """Arc identity resolution - determining if episodes belong to the same arc instance.
 
-This module implements multi-factor identity scoring:
-1. Temporal proximity
-2. Actor overlap
-3. Location matching
-4. Embedding similarity
-5. Phase sequence continuity
+Implements the fixed-order staged pipeline from design doc Sec 6.2 stage 6:
+1. Hard filter: scope_id partition (done by the caller before this module).
+2. Hard-ish filter: actor-entity overlap above threshold.
+3. Soft signal: surface-embedding similarity (raw text, NOT structural).
+4. Per-scale temporal gap threshold + arc_type agreement.
+5. Phase-sequence continuity check.
 """
 
 from __future__ import annotations
@@ -71,6 +71,7 @@ class ArcIdentityResolver:
         phase_weight: float = 0.15,
         match_threshold: float = 0.70,
         high_confidence_threshold: float = 0.85,
+        actor_overlap_threshold: float = 0.1,
     ):
         # CORRECTION: Thresholds are hypotheses - tune against composition fixture
         # Starting points (user suggestion): episodic ~1-2y, institutional ~5y,
@@ -89,52 +90,92 @@ class ArcIdentityResolver:
         self.phase_weight = phase_weight
         self.match_threshold = match_threshold
         self.high_confidence_threshold = high_confidence_threshold
-    
+        # Stage 2 hard-ish filter (design doc Sec 6.2 stage 6): actor overlap
+        # below this rejects the pair outright, unless neutral (no actor data).
+        self.actor_overlap_threshold = actor_overlap_threshold
+
     def calculate_identity_score(
         self,
         episode_a: Episode,
         episode_b: Episode,
+        scale: str = "institutional",
     ) -> IdentityScore:
         """Calculate identity score between two episodes.
-        
-        CORRECTION: Assumes scope_id already matched (hard partition).
-        Uses surface embeddings (raw text), NOT structural embeddings.
+
+        CORRECTION: Assumes scope_id already matched (hard partition -- stage
+        1, checked by the caller before this method runs).
+
+        Implements the fixed-order staged pipeline from design doc Sec 6.2
+        stage 6, NOT a single weighted-sum-vs-threshold: `is_match` is a hard
+        cascade (actor-overlap gate -> per-scale temporal gate -> arc_type
+        agreement -> phase-sequence continuity gate). `overall_score` remains
+        a weighted diagnostic/ranking value (used by find_candidate_matches,
+        suggest_split_points, requires_human_review) but no longer determines
+        is_match on its own -- that conflated the stage-3 soft signal
+        (surface-embedding similarity) into a hard cutoff, which is exactly
+        what made this method a parallel weighted sum instead of a staged
+        filter pipeline.
+
+        Args:
+            scale: cycle scale this comparison is scoped to (Sec 6.2 stage 6
+                item 4: per-scale gap thresholds, not a single global one).
+                Defaults to "institutional" to preserve existing callers'
+                behavior; CompositionPipeline passes the scale explicitly.
         """
         match_reasons = []
         mismatch_reasons = []
-        
+
         # CORRECTION: Scope match is prerequisite (hard filter)
         # This should be checked BEFORE calling this method
         scope_match = True  # Caller ensures same scope
-        
-        # CORRECTION: Per-scale temporal threshold
-        temporal_score = self._calculate_temporal_score(episode_a, episode_b)
+
+        # Stage 4: per-scale temporal threshold
+        temporal_score = self._calculate_temporal_score(episode_a, episode_b, scale)
         if temporal_score > 0.8:
             match_reasons.append(f"High temporal proximity ({temporal_score:.2f})")
         elif temporal_score < 0.3:
             mismatch_reasons.append(f"Low temporal proximity ({temporal_score:.2f})")
-        
-        # 2. Actor overlap (entity-resolved, not string match)
+
+        # Stage 2: actor overlap (entity-resolved, not string match)
         actor_score = self._calculate_actor_overlap(episode_a, episode_b)
+        actor_gate = self._passes_actor_gate(episode_a, episode_b, actor_score)
         if actor_score > 0.5:
             match_reasons.append(f"Actor entity overlap ({actor_score:.2f})")
-        elif actor_score == 0 and len(episode_a.actors) > 0 and len(episode_b.actors) > 0:
+        elif not actor_gate:
             mismatch_reasons.append("No actor entity overlap")
-        
-        # CORRECTION: Surface embedding similarity (raw text, NOT structural)
+
+        # Stage 3: surface embedding similarity (raw text, NOT structural) --
+        # a SOFT signal per the doc: feeds the score, never gates is_match.
         surface_embedding_score = self._calculate_surface_embedding_similarity(episode_a, episode_b)
         if surface_embedding_score > 0.8:
             match_reasons.append(f"High surface similarity ({surface_embedding_score:.2f})")
         elif surface_embedding_score < 0.5 and surface_embedding_score > 0:
             mismatch_reasons.append(f"Low surface similarity ({surface_embedding_score:.2f})")
-        
-        # 4. Phase sequence continuity
+
+        # Stage 5: phase sequence continuity
         phase_score = self._calculate_phase_sequence(episode_a, episode_b)
+        phase_gate = phase_score > 0.0  # 0.0 == strictly out of order (hard reject)
         if phase_score > 0.8:
             match_reasons.append(f"Sequential phases ({episode_a.arc_phase.value} → {episode_b.arc_phase.value})")
         elif phase_score < 0.3:
             mismatch_reasons.append(f"Non-sequential phases ({episode_a.arc_phase.value} vs {episode_b.arc_phase.value})")
-        
+
+        # Stage 4 (arc_type agreement half): unknown arc_type on either side
+        # is neutral (doesn't block); a known mismatch is a hard reject.
+        arc_type_gate = (
+            episode_a.arc_type == episode_b.arc_type
+            if episode_a.arc_type and episode_b.arc_type
+            else True
+        )
+        if not arc_type_gate:
+            mismatch_reasons.append(
+                f"Different arc types ({episode_a.arc_type} vs {episode_b.arc_type})"
+            )
+
+        # Temporal gate: 0.0 means beyond the per-scale threshold (with
+        # overflow allowance) -- a hard reject, not just a low score.
+        temporal_gate = temporal_score > 0.0
+
         # Calculate weighted composite score
         # CORRECTION: No location weight, added surface embedding
         overall_score = (
@@ -143,15 +184,16 @@ class ArcIdentityResolver:
             surface_embedding_score * self.surface_embedding_weight +
             phase_score * self.phase_weight
         )
-        
+
         # Calculate confidence based on data availability
         confidence = self._calculate_confidence(
             episode_a, episode_b, temporal_score, actor_score, surface_embedding_score
         )
-        
-        # Determine if it's a match
-        is_match = overall_score >= self.match_threshold
-        
+
+        # Stage 6 identity decision: hard cascade, not overall_score vs.
+        # threshold. All four gates must pass.
+        is_match = actor_gate and temporal_gate and arc_type_gate and phase_gate
+
         return IdentityScore(
             scope_match=scope_match,
             temporal_score=temporal_score,
@@ -164,19 +206,32 @@ class ArcIdentityResolver:
             match_reasons=match_reasons,
             mismatch_reasons=mismatch_reasons,
         )
-    
-    def _calculate_temporal_score(self, a: Episode, b: Episode) -> float:
+
+    def _passes_actor_gate(self, a: Episode, b: Episode, actor_score: Optional[float] = None) -> bool:
+        """Stage 2 hard-ish filter: actor overlap above threshold.
+
+        Neutral (no actor data on either side) never blocks -- alias-
+        normalized name match is "acceptable interim debt" per the design
+        doc until full entity resolution lands (Sec 6.2 stage 6 item 2).
+        """
+        if not a.actors or not b.actors:
+            return True
+        score = actor_score if actor_score is not None else self._calculate_actor_overlap(a, b)
+        return score >= self.actor_overlap_threshold
+
+    def _calculate_temporal_score(self, a: Episode, b: Episode, scale: str = "institutional") -> float:
         """Calculate temporal proximity score (0-1) with per-scale threshold.
-        
+
         CORRECTION: Different thresholds for episodic vs institutional vs generational arcs.
         """
         if not a.end_date or not b.start_date:
             return 0.5  # Neutral if dates unknown
-        
-        # CORRECTION: Select threshold based on inferred scale
-        # Default to institutional if unknown
-        threshold = self.temporal_thresholds.get("institutional", timedelta(days=365))
-        
+
+        # CORRECTION: Select threshold based on the scale this comparison is
+        # scoped to (arc instances are episodic-scale by convention, Sec 2;
+        # other cycle-membership resolution may pass other scales).
+        threshold = self.temporal_thresholds.get(scale, self.temporal_thresholds["institutional"])
+
         # Gap between episodes (negative = overlap)
         gap = b.start_date - a.end_date
         
@@ -383,7 +438,7 @@ class ArcIdentityResolver:
         scored_matches = []
         for candidate_orm in candidates:
             # Convert to Pydantic model
-            candidate = self._episode_from_orm(candidate_orm)
+            candidate = self.episode_from_orm(candidate_orm)
             score = self.calculate_identity_score(episode, candidate)
             scored_matches.append((candidate, score))
         
@@ -392,8 +447,12 @@ class ArcIdentityResolver:
         
         return scored_matches
     
-    def _episode_from_orm(self, orm: EpisodeORM) -> Episode:
-        """Quick conversion from ORM to Pydantic (minimal fields for identity)."""
+    def episode_from_orm(self, orm: EpisodeORM) -> Episode:
+        """Convert ORM to Pydantic (fields relevant to identity + composition).
+
+        Shared by CompositionPipeline so ORM<->Pydantic conversion for
+        identity-relevant fields lives in one place.
+        """
         from narrative_engine.models import Actor, SourcePassage
         
         return Episode(

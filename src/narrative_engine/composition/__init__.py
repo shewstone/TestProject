@@ -6,7 +6,11 @@ from narrative_engine.composition.identity import (
     DisambiguationEngine,
     IdentityScore,
 )
-from narrative_engine.composition.pipeline import CompositionPipeline, CompositionConfig
+from narrative_engine.composition.pipeline import (
+    CompositionConfig,
+    CompositionPipeline,
+    compose_arc_instances_from_episodes,
+)
 
 __all__ = [
     "ArcIdentityResolver",
@@ -16,4 +20,5 @@ __all__ = [
     "CompositionStatus",
     "DisambiguationEngine",
     "IdentityScore",
+    "compose_arc_instances_from_episodes",
 ]
