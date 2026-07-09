@@ -135,6 +135,10 @@ class EpisodeORM(Base):
     # Setting
     location: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     setting_description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Scope partition key (polity/institution/system scope, e.g. "us_national").
+    # Hard filter for composition identity resolution -- episodes in different
+    # scopes are never compared (design doc Sec 6.2 stage 6).
+    scope_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
     # Narrative structure
     initiating_conditions: Mapped[list] = mapped_column(JSON, default=list)
@@ -195,6 +199,7 @@ class EpisodeORM(Base):
         Index("ix_episodes_arc_type", "arc_type"),
         Index("ix_episodes_arc_phase", "arc_phase"),
         Index("ix_episodes_start_date", "start_date"),
+        Index("ix_episodes_scope_id", "scope_id"),
         Index("ix_episodes_embedding", "embedding", postgresql_using="ivfflat"),
     )
 

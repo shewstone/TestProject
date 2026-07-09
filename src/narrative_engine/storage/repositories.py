@@ -166,6 +166,7 @@ class EpisodeRepository:
             date_precision=episode.date_precision,
             location=episode.location,
             setting_description=episode.setting_description,
+            scope_id=episode.scope_id,
             initiating_conditions=episode.initiating_conditions,
             escalation_mechanics=episode.escalation_mechanics,
             tension=episode.tension,
@@ -206,6 +207,7 @@ class EpisodeRepository:
             date_precision=orm.date_precision,
             location=orm.location,
             setting_description=orm.setting_description,
+            scope_id=orm.scope_id,
             actors=[
                 Actor(
                     id=a.id,
@@ -251,6 +253,7 @@ class EpisodeRepository:
         orm.end_date = episode.end_date
         orm.location = episode.location
         orm.setting_description = episode.setting_description
+        orm.scope_id = episode.scope_id
         orm.initiating_conditions = episode.initiating_conditions
         orm.escalation_mechanics = episode.escalation_mechanics
         orm.tension = episode.tension

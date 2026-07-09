@@ -402,6 +402,7 @@ class ArcIdentityResolver:
             start_date=orm.start_date,
             end_date=orm.end_date,
             location=orm.location,
+            scope_id=orm.scope_id,
             actors=[
                 Actor(id=a.id, name=a.name, role=a.role, attributes=a.attributes)
                 for a in (orm.actors or [])
