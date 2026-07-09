@@ -1,0 +1,104 @@
+Narrative Engine: A Technical Design for Qualitative Historical Forecasting
+
+Status: Draft v0.1
+
+Concept: Treat history as a corpus of stories with recurring arcs. Use LLMs to extract, classify, and structure those arcs at multiple time scales, then generate forecasts ("theses") by asking: given where we are in the story, how do stories like this usually end?
+
+Problem Statement & Requirements
+
+Quantitative forecasting models consume prices, dates, and time series. This system instead consumes text — histories, articles, primary sources — and builds a structured, semantic model of how situations evolve. The core bet is that narrative arcs are non-random and that pattern-matching a present situation against a library of historical arcs yields predictive signal.
+
+Core Conceptual Model
+
+The data model is the heart of the system. Three primitives:
+
+Episode — the atomic narrative unit. A bounded stretch of historical action with a beginning state, a tension, and a resolution. Example: "Weimar hyperinflation, 1921–1923."
+
+Arc — an archetypal shape an episode instantiates. The taxonomy includes: rise-and-overextension, hubris-nemesis, reform-then-reaction, decadence-and-renewal, siege-and-collapse, succession crisis, credit-boom-and-bust, generational forgetting.
+
+Cycle — a recursive container. Cycles nest: a civilizational cycle contains institutional cycles contains generational cycles contains episodes.
+
+Historical Example: The 1929 Stock Market Crash
+
+This episode instantiates the credit-boom-and-bust arc, with clear phases:
+- Boom (1922-1927): Post-war economic expansion
+- Euphoria (1927-1929): Speculative excess, margin trading
+- Distress (October 1929): Initial cracks, Black Thursday
+- Panic (October 1929): Cascade selling, Black Tuesday
+- Revulsion (1929-1932): Market bottom, 89% decline
+
+Initiating Conditions:
+- Speculative excess in stock market
+- Widespread margin trading (10% down)
+- Weak economic fundamentals hidden by optimism
+
+Escalation Mechanics:
+- Panic selling cascades
+- Margin calls forcing liquidation
+- Loss of confidence in banking system
+
+Resolution:
+- Market bottomed July 1932
+- Dow declined 89% from peak
+- Great Depression followed
+
+Consequences:
+- Banking crisis (1930-1933)
+- New Deal reforms enacted
+- Keynesian economics ascendant
+- Bretton Woods system (post-WWII)
+
+Actor: Herbert Hoover (President, Republican, 1929-1933)
+- Role: Failed to stem panic
+- Attributes: Believed in limited government intervention
+
+Another Example: Weimar Hyperinflation (1921-1923)
+
+This episode shows fiscal distress and currency collapse.
+
+Initiating Conditions:
+- War reparations burden (Treaty of Versailles)
+- Occupation of Ruhr (1923)
+- Passive resistance funded by money printing
+
+Escalation:
+- Currency velocity accelerated
+- Wage-price spirals
+- Savings destroyed
+
+Resolution:
+- Rentenmark introduced (Nov 1923)
+- Currency stabilized
+- Political radicalization followed
+
+Key Design Principles
+
+1. Schema-first extraction: LLM fills fixed schema
+2. Taxonomy as data: Arc definitions in versioned config
+3. Provenance required: Every claim traceable to source
+4. Mechanism vocabulary: elite_overproduction, fiscal_distress, immiseration
+5. Inferred links flagged: Structural similarity without explicit reference
+6. Human review: Inferred links above threshold reviewed
+
+Framework Imports
+
+External frameworks can be imported as versioned packages:
+- Dalio (economic cycles)
+- Turchin (structural-demographic)
+- Strauss-Howe (generational)
+- I Ching (64 situation-states)
+
+Evaluation
+
+Masked-ending backtests: Feed sources up to year T, hide after, ask for thesis, score against actual outcomes.
+
+Leakage control is critical: The LLM may already know how WWI ended. Mitigations include scoring analog selection separately, using obscure histories, and post-cutoff events.
+
+Calibration: Track Brier scores over resolved theses.
+
+Risks
+
+- Narrative fallacy: Over-recording dramatic arcs
+- Historiographic bias: Corpus encodes author theories
+- Taxonomy validity: Arc sets are hypotheses
+- Leakage: LLM training data contamination
