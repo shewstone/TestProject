@@ -28,7 +28,7 @@ class EpisodeRepository:
 
     async def create(self, episode: Episode) -> Episode:
         """Create a new episode."""
-        with LogTimer("episode_create", episode_id=str(episode.id)):
+        with LogTimer(logger, "episode_create", episode_id=str(episode.id)):
             try:
                 orm_episode = self._to_orm(episode)
                 self.session.add(orm_episode)
@@ -51,7 +51,7 @@ class EpisodeRepository:
 
     async def get_by_id(self, episode_id: UUID) -> Optional[Episode]:
         """Get episode by ID with all relationships."""
-        with LogTimer("episode_get_by_id", episode_id=str(episode_id)):
+        with LogTimer(logger, "episode_get_by_id", episode_id=str(episode_id)):
             try:
                 result = await self.session.execute(
                     select(EpisodeORM)
@@ -185,8 +185,17 @@ class EpisodeRepository:
         """Convert ORM to Pydantic model."""
         from narrative_engine.models import SourcePassage
 
-        actors = getattr(orm, 'actors', None)
-        source_passages = getattr(orm, 'source_passages', None)
+        # Avoid lazy loading - relationships must be eagerly loaded via selectinload
+        # If not loaded, return empty lists
+        try:
+            actors = orm.actors if hasattr(orm, '_actors') and orm._actors else []
+        except:
+            actors = []
+        
+        try:
+            source_passages = orm.source_passages if hasattr(orm, '_source_passages') and orm._source_passages else []
+        except:
+            source_passages = []
         
         return Episode(
             id=orm.id,
@@ -204,8 +213,8 @@ class EpisodeRepository:
                     role=a.role,
                     attributes=a.attributes,
                 )
-                for a in (actors or [])
-            ] if actors is not None else [],
+                for a in actors
+            ] if actors else [],
             initiating_conditions=orm.initiating_conditions,
             escalation_mechanics=orm.escalation_mechanics,
             tension=orm.tension,
@@ -226,8 +235,8 @@ class EpisodeRepository:
                     page=sp.page,
                     historiographic_school=sp.historiographic_school,
                 )
-                for sp in (source_passages or [])
-            ] if source_passages is not None else [],
+                for sp in source_passages
+            ] if source_passages else [],
             extracted_from=orm.extracted_from,
             created_at=orm.created_at,
             updated_at=orm.updated_at,

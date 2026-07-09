@@ -169,13 +169,9 @@ class CompositionPipeline:
 
         # Add episodes to phases
         for episode in cluster:
-            if episode.arc_phase and episode.arc_phase != ArcPhase:
-                # Get source IDs from episode
-                source_ids = [
-                    sp.work_id
-                    for sp in episode.source_passages
-                    if hasattr(sp, "work_id")
-                ]
+            if episode.arc_phase:
+                # Get source IDs from episode.extracted_from (stored on Episode model)
+                source_ids = episode.extracted_from if episode.extracted_from else ["unknown"]
                 source_id = source_ids[0] if source_ids else "unknown"
 
                 instance.add_episode_to_phase(
