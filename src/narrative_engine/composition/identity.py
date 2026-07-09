@@ -365,7 +365,7 @@ class ArcIdentityResolver:
         
         # Temporal filter (episodes within threshold)
         if episode.end_date:
-            date_range = self.temporal_threshold * 2
+            date_range = self.temporal_thresholds.get("institutional", timedelta(days=365)) * 2
             query = query.where(
                 EpisodeORM.start_date >= episode.end_date - date_range
             ).where(
@@ -465,7 +465,7 @@ class DisambiguationEngine:
         avg_actor_continuity = sum(actor_continuity_scores) / len(actor_continuity_scores) if actor_continuity_scores else 0
         
         if avg_actor_continuity < 0.2 and len(cluster) > 2:
-            risks.append(f"Low actor continuity ({avg_continuity:.2f})")
+            risks.append(f"Low actor continuity ({avg_actor_continuity:.2f})")
         
         # Assess overall risk
         risk_level = "low"
