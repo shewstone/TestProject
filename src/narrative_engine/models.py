@@ -54,6 +54,45 @@ class ArcType(str, Enum):
     RAGS_TO_RICHES = "rags_to_riches"
 
 
+class MechanismTag(str, Enum):
+    """Turchin-style structural drivers.
+
+    Controlled vocabulary for mechanisms that drive historical change.
+    Used to tag episodes, condition phase transitions, and compute
+    mechanism-density indices.
+    """
+
+    # Structural-demographic mechanisms (Turchin)
+    ELITE_OVERPRODUCTION = "elite_overproduction"
+    ELITE_INTRA_COMPETITION = "elite_intra_competition"
+    POPULAR_IMMISERATION = "popular_immiseration"
+    FISCAL_DISTRESS = "fiscal_distress"
+    STATE_FRAGILITY = "state_fragility"
+    GEOPOLITICAL_PRESSURE = "geopolitical_pressure"
+
+    # Institutional mechanisms
+    INSTITUTIONAL_DECAY = "institutional_decay"
+    BUREAUCRATIC_SCLEROSIS = "bureaucratic_sclerosis"
+    REGULATORY_CAPTURE = "regulatory_capture"
+    CORRUPTION_SPIRAL = "corruption_spiral"
+
+    # Economic mechanisms
+    CREDIT_EXPANSION = "credit_expansion"
+    DEBT_OVERHANG = "debt_overhang"
+    CURRENCY_CRISIS = "currency_crisis"
+    ASSET_BUBBLE = "asset_bubble"
+
+    # Social mechanisms
+    GENERATIONAL_FORGETTING = "generational_forgetting"
+    COHETION_EROSION = "cohesion_erosion"
+    IDENTITY_POLARIZATION = "identity_polarization"
+
+    # Narrative mechanisms
+    CULTURAL_DECADENCE = "cultural_decadence"
+    HUBRIS_CULTURE = "hubris_culture"
+    REFORM_RESISTANCE = "reform_resistance"
+
+
 class CycleScale(str, Enum):
     """Fractal cycle scales."""
 
