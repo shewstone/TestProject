@@ -10,7 +10,7 @@ from uuid import UUID
 import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from narrative_engine.models import ArcPhase, ArcType, CycleScale, Episode
+from narrative_engine.models import ArcPhase, ArcType, CycleScale, Episode, MechanismTag
 from narrative_engine.retrieval.embeddings import EmbeddingGenerator
 from narrative_engine.storage.repositories import CycleRepository, EpisodeRepository
 
@@ -26,6 +26,7 @@ class RetrievedAnalog:
     arc_match_score: float  # 1.0 if same arc type, 0.5 if related, 0.0 otherwise
     phase_compatibility: float  # How well phases align for forecasting
     cycle_context_score: float  # Same cycle scale boosts relevance
+    mechanism_match_score: float  # Jaccard overlap of mechanism_tags (Sec 3.8)
     combined_score: float  # Weighted combination of above
     retrieval_method: str  # "vector", "graph", or "hybrid"
     reasoning: str  # Why this analog was selected
@@ -37,16 +38,18 @@ class AnalogRetrievalEngine:
     def __init__(
         self,
         embedding_generator: Optional[EmbeddingGenerator] = None,
-        vector_weight: float = 0.5,
+        vector_weight: float = 0.4,
         arc_weight: float = 0.2,
         phase_weight: float = 0.15,
         cycle_weight: float = 0.15,
+        mechanism_weight: float = 0.1,
     ) -> None:
         self.embedding_generator = embedding_generator or EmbeddingGenerator()
         self.vector_weight = vector_weight
         self.arc_weight = arc_weight
         self.phase_weight = phase_weight
         self.cycle_weight = cycle_weight
+        self.mechanism_weight = mechanism_weight
         self.logger = structlog.get_logger()
 
     async def retrieve_analogs(
@@ -144,12 +147,19 @@ class AnalogRetrievalEngine:
             session,
         )
 
+        # Mechanism overlap (design doc Sec 3.8): shared structural drivers
+        mechanism_score = self._compute_mechanism_overlap(
+            query_episode.mechanism_tags,
+            candidate.mechanism_tags,
+        )
+
         # Combined score (weighted)
         combined = (
             self.vector_weight * vector_similarity
             + self.arc_weight * arc_match
             + self.phase_weight * phase_compat
             + self.cycle_weight * cycle_score
+            + self.mechanism_weight * mechanism_score
         )
 
         # Generate reasoning
@@ -160,6 +170,11 @@ class AnalogRetrievalEngine:
             reasoning_parts.append(f"Similar phase: {candidate.arc_phase.value}")
         if vector_similarity > 0.85:
             reasoning_parts.append("High semantic similarity")
+        shared_mechanisms = set(query_episode.mechanism_tags) & set(candidate.mechanism_tags)
+        if shared_mechanisms:
+            reasoning_parts.append(
+                f"Shared mechanisms: {', '.join(sorted(m.value for m in shared_mechanisms))}"
+            )
 
         reasoning = "; ".join(reasoning_parts) if reasoning_parts else "General similarity"
 
@@ -169,6 +184,7 @@ class AnalogRetrievalEngine:
             arc_match_score=arc_match,
             phase_compatibility=phase_compat,
             cycle_context_score=cycle_score,
+            mechanism_match_score=mechanism_score,
             combined_score=combined,
             retrieval_method="hybrid",
             reasoning=reasoning,
@@ -206,6 +222,29 @@ class AnalogRetrievalEngine:
             return 0.6  # Related
 
         return 0.1  # Different arc types
+
+    def _compute_mechanism_overlap(
+        self,
+        query_tags: List[MechanismTag],
+        candidate_tags: List[MechanismTag],
+    ) -> float:
+        """Score mechanism-tag overlap (design doc Sec 3.8) via Jaccard
+        similarity. Neutral if either side has no tags -- most episodes
+        won't have been re-tagged yet, so absence isn't evidence against
+        a match (same neutral-default convention as actor-overlap in
+        composition/identity.py).
+        """
+        if not query_tags or not candidate_tags:
+            return 0.5
+
+        query_set = set(query_tags)
+        candidate_set = set(candidate_tags)
+
+        union = query_set | candidate_set
+        if not union:
+            return 0.5
+
+        return len(query_set & candidate_set) / len(union)
 
     def _compute_phase_compatibility(
         self,

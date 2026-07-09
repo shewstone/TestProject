@@ -314,6 +314,30 @@ class TestExtractionOrchestrator:
         assert "Segmentation failed" in result.errors[0]
 
     @pytest.mark.asyncio
+    async def test_classify_episode_mechanism_tags(self, mock_pipeline):
+        """Unknown mechanism tags from the LLM are skipped, not fatal."""
+        from narrative_engine.models import Episode, MechanismTag
+
+        mock_pipeline.classify.return_value = {
+            "arc_type": "credit_boom_and_bust",
+            "arc_phase": "panic",
+            "phase_confidence": 0.9,
+            "rationale": "Test",
+            "secondary_arcs": [],
+            "mechanism_tags": ["credit_expansion", "asset_bubble", "not_a_real_mechanism"],
+        }
+
+        orchestrator = ExtractionOrchestrator(pipeline=mock_pipeline)
+        episode = Episode(title="Test", summary="Test")
+
+        await orchestrator._classify_episode(episode)
+
+        assert episode.mechanism_tags == [
+            MechanismTag.CREDIT_EXPANSION,
+            MechanismTag.ASSET_BUBBLE,
+        ]
+
+    @pytest.mark.asyncio
     async def test_parse_date_range(self, mock_pipeline):
         """Test date range parsing."""
         orchestrator = ExtractionOrchestrator(pipeline=mock_pipeline)

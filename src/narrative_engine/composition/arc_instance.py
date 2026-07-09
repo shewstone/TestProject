@@ -58,6 +58,11 @@ class ArcInstance(BaseModel):
     arc_type: ArcType
     canonical_name: str  # "HUBRIS_NEMESIS, Wilhelmine Germany, 1890–1918"
 
+    # Polity/institution scope this instance belongs to (every episode in
+    # the composing cluster shares one, since composition partitions by
+    # scope_id before clustering -- see compose_arc_instances_from_episodes).
+    scope_id: Optional[str] = None
+
     # Temporal bounds
     start_date: Optional[datetime] = None
     end_date: Optional[datetime] = None

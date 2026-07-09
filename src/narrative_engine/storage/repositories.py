@@ -191,6 +191,7 @@ class EpisodeRepository:
             tension=episode.tension,
             resolution=episode.resolution,
             consequences=episode.consequences,
+            mechanism_tags=episode.mechanism_tags,
             arc_type=episode.arc_type,
             arc_phase=episode.arc_phase,
             phase_confidence=episode.phase_confidence,
@@ -242,6 +243,7 @@ class EpisodeRepository:
             tension=orm.tension,
             resolution=orm.resolution,
             consequences=orm.consequences,
+            mechanism_tags=orm.mechanism_tags,
             arc_type=orm.arc_type,
             arc_phase=orm.arc_phase,
             phase_confidence=orm.phase_confidence,
@@ -281,6 +283,7 @@ class EpisodeRepository:
         orm.tension = episode.tension
         orm.resolution = episode.resolution
         orm.consequences = episode.consequences
+        orm.mechanism_tags = episode.mechanism_tags
         orm.arc_type = episode.arc_type
         orm.arc_phase = episode.arc_phase
         orm.phase_confidence = episode.phase_confidence
@@ -304,6 +307,7 @@ class CycleRepository:
             name=cycle.name,
             scale=cycle.scale,
             description=cycle.description,
+            scope_id=cycle.scope_id,
             start_date=cycle.start_date,
             end_date=cycle.end_date,
             parent_cycle_id=cycle.parent_cycle_id,
@@ -362,6 +366,7 @@ class CycleRepository:
             name=orm.name,
             scale=orm.scale,
             description=orm.description,
+            scope_id=orm.scope_id,
             start_date=orm.start_date,
             end_date=orm.end_date,
             parent_cycle_id=orm.parent_cycle_id,

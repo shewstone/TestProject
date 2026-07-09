@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Dict, List, Optional
 from uuid import uuid4
 
@@ -104,12 +105,13 @@ class ThesisGenerator:
         thesis = Thesis(
             id=uuid4(),
             query=self._formulate_query(query_episode),
-            query_episode_id=query_episode.id,
-            base_analogs=[e.analog.episode.id for e in evidence],
+            query_date=datetime.utcnow(),
+            analog_episode_ids=[e.analog.episode.id for e in evidence],
+            analog_similarity_scores=[e.analog.combined_score for e in evidence],
             dominant_continuation=continuations[0] if continuations else None,
             alternative_continuations=[(c.description, c.probability) for c in continuations[1:]],
             confidence=confidence,
-            watch_conditions=watch_conditions,
+            watch_for_indicators=watch_conditions,
             key_uncertainties=uncertainties,
             model_version="thesis-v1.0",
             taxonomy_version=CURRENT_TAXONOMY_VERSION,
@@ -273,13 +275,20 @@ class ThesisGenerator:
         self,
         evidence: List[AnalogEvidence],
     ) -> List[str]:
-        """Generate indicators to watch based on analog patterns."""
+        """Generate indicators to watch based on analog patterns.
+
+        Prefers mechanism_tags (design doc Sec 3.8, controlled vocabulary)
+        over free-text escalation_mechanics when an analog has been tagged --
+        falls back to escalation_mechanics for episodes extracted before
+        mechanism tagging existed.
+        """
         conditions = []
 
-        # Extract escalation mechanics from analogs
         for e in evidence[:5]:  # Top 5 analogs
             episode = e.analog.episode
-            if episode.escalation_mechanics:
+            if episode.mechanism_tags:
+                conditions.extend(tag.value.replace("_", " ") for tag in episode.mechanism_tags[:2])
+            elif episode.escalation_mechanics:
                 conditions.extend(episode.escalation_mechanics[:2])
 
         # Deduplicate and prioritize
@@ -397,12 +406,13 @@ class ThesisGenerator:
         return Thesis(
             id=uuid4(),
             query=self._formulate_query(query_episode),
-            query_episode_id=query_episode.id,
-            base_analogs=[a.episode.id for a in analogs],
+            query_date=datetime.utcnow(),
+            analog_episode_ids=[a.episode.id for a in analogs],
+            analog_similarity_scores=[a.combined_score for a in analogs],
             dominant_continuation=None,
             alternative_continuations=[],
             confidence=ThesisConfidence.UNKNOWN,
-            watch_conditions=[],
+            watch_for_indicators=[],
             key_uncertainties=["Insufficient historical analogs for reliable forecast"],
             model_version="thesis-v1.0",
             taxonomy_version=CURRENT_TAXONOMY_VERSION,

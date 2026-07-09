@@ -84,7 +84,7 @@ class MechanismTag(str, Enum):
 
     # Social mechanisms
     GENERATIONAL_FORGETTING = "generational_forgetting"
-    COHETION_EROSION = "cohesion_erosion"
+    COHESION_EROSION = "cohesion_erosion"
     IDENTITY_POLARIZATION = "identity_polarization"
 
     # Narrative mechanisms
@@ -288,6 +288,11 @@ class Episode(BaseModel):
     resolution: Optional[str] = None
     consequences: List[str] = Field(default_factory=list)
 
+    # Structural drivers (design doc Sec 3.8): controlled-vocabulary tags for
+    # the mechanisms at work in this episode, assigned during classification
+    # alongside arc_type/arc_phase (same analytical-judgment stage).
+    mechanism_tags: List[MechanismTag] = Field(default_factory=list)
+
     # Arc classification
     arc_type: Optional[ArcType] = None
     arc_phase: Optional[ArcPhase] = None
@@ -349,7 +354,7 @@ class TransitionTendency(BaseModel):
     from_phase: ArcPhase
     to_phase: ArcPhase
     base_weight: float = Field(ge=0.0, le=1.0)
-    conditioning_mechanisms: List[str] = Field(default_factory=list)  # mechanism ids; empty = unconditional
+    conditioning_mechanisms: List[MechanismTag] = Field(default_factory=list)  # empty = unconditional
     conditioned_weight: Optional[float] = Field(default=None, ge=0.0, le=1.0)
 
 
@@ -381,6 +386,12 @@ class Cycle(BaseModel):
     name: str
     scale: CycleScale
     description: Optional[str] = None
+
+    # Polity/institution scope this cycle tree belongs to (CORRECTION: every
+    # cycle tree is scoped, there is no global phase clock -- mirrors
+    # Episode.scope_id). None only for cycles that predate scoping or
+    # deliberately span all scopes (e.g. imported frameworks pre-binding).
+    scope_id: Optional[str] = None
 
     # Temporal bounds
     start_date: Optional[datetime] = None

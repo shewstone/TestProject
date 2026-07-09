@@ -16,7 +16,7 @@ from narrative_engine.evaluation.metrics import (
     CalibrationPoint,
     compute_skill_score,
 )
-from narrative_engine.models import Thesis, ThesisConfidence
+from narrative_engine.models import Continuation, Thesis, ThesisConfidence
 
 
 class TestBrierScore:
@@ -124,21 +124,19 @@ class TestBacktestEngine:
             id=uuid4(),
             query="Will market crash?",
             query_date=datetime(2024, 1, 1),
-            dominant_continuation=type(
-                "obj",
-                (object,),
-                {
-                    "description": "Market crashes",
-                    "probability": 0.7,
-                },
-            )(),
+            dominant_continuation=Continuation(
+                description="Market crashes",
+                probability=0.7,
+            ),
             alternative_continuations=[
                 ("Soft landing", 0.2),
                 ("Continues up", 0.1),
             ],
             confidence=ThesisConfidence.HIGH,
-            watch_conditions=["High leverage", "Inverted yield curve"],
+            watch_for_indicators=["High leverage", "Inverted yield curve"],
             key_uncertainties=["Fed policy"],
+            model_version="thesis-v1.0",
+            taxonomy_version="arc-v0.1.0",
         )
 
     def test_accurate_prediction(self, sample_thesis):

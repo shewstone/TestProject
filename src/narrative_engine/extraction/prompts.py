@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Dict, List
 
-from narrative_engine.extraction.config import DEFAULT_ARC_TAXONOMY
+from narrative_engine.extraction.config import DEFAULT_ARC_TAXONOMY, MECHANISM_DESCRIPTIONS
 
 # Prompt versions for tracking
 PROMPT_VERSIONS = {
@@ -104,6 +104,10 @@ def get_classification_prompt(episode_summary: str, full_text: str) -> str:
         ]
     )
 
+    mechanism_descriptions = "\n".join(
+        [f"- {tag}: {description}" for tag, description in MECHANISM_DESCRIPTIONS.items()]
+    )
+
     return f"""You are a narrative pattern classifier. Analyze this historical episode and classify its archetypal structure.
 
 **Episode summary:**
@@ -131,11 +135,15 @@ def get_classification_prompt(episode_summary: str, full_text: str) -> str:
 - panic: Crash, rapid decline
 - revulsion: Despair, avoidance of asset class
 
+**Available mechanisms** (structural drivers -- tag any that are clearly at work in this episode; leave out mechanisms that don't apply):
+{mechanism_descriptions}
+
 **Instructions:**
 1. Identify the PRIMARY arc type (most dominant pattern)
 2. Identify the current phase in that arc
 3. Consider if secondary arcs apply (episodes often instantiate multiple patterns)
-4. Provide confidence score (0.0-1.0) and rationale
+4. Tag the mechanisms clearly present, from the vocabulary above only
+5. Provide confidence score (0.0-1.0) and rationale
 
 **Output format (JSON):**
 {{
@@ -145,7 +153,8 @@ def get_classification_prompt(episode_summary: str, full_text: str) -> str:
   "rationale": "Clear panic phase: bank runs, asset fire sales, contagion",
   "secondary_arcs": [
     {{"type": "hubris_nemesis", "phase": "nemesis", "confidence": 0.75}}
-  ]
+  ],
+  "mechanism_tags": ["credit_expansion", "asset_bubble"]
 }}
 
 Return only valid JSON. Be decisive—choose the best fit even if imperfect."""

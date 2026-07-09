@@ -6,6 +6,8 @@ import os
 from dataclasses import dataclass
 from typing import Optional
 
+from narrative_engine.models import MechanismTag
+
 
 @dataclass(frozen=True)
 class LLMConfig:
@@ -164,6 +166,35 @@ DEFAULT_ARC_TAXONOMY = {
         "description": "Rise from obscurity to success, threat, and final triumph",
         "phases": ["initial_state", "acquisition", "peak", "loss", "final_success"],
     },
+}
+
+
+# Mechanism vocabulary is a versioned artifact too (design doc Sec 3.8),
+# same convention as CURRENT_TAXONOMY_VERSION above.
+CURRENT_MECHANISM_VOCAB_VERSION = "mechanism-v0.1.0"
+
+# Short descriptions for the classification prompt -- one per MechanismTag.
+MECHANISM_DESCRIPTIONS = {
+    MechanismTag.ELITE_OVERPRODUCTION.value: "More elite aspirants than elite positions available",
+    MechanismTag.ELITE_INTRA_COMPETITION.value: "Elites turning on each other for scarce positions/resources",
+    MechanismTag.POPULAR_IMMISERATION.value: "Falling living standards or well-being for the general population",
+    MechanismTag.FISCAL_DISTRESS.value: "State revenue failing to cover state obligations",
+    MechanismTag.STATE_FRAGILITY.value: "Weakening state capacity to enforce order or deliver services",
+    MechanismTag.GEOPOLITICAL_PRESSURE.value: "External military, diplomatic, or economic pressure from rivals",
+    MechanismTag.INSTITUTIONAL_DECAY.value: "Institutions losing effectiveness or legitimacy over time",
+    MechanismTag.BUREAUCRATIC_SCLEROSIS.value: "Administrative rigidity slowing response to new conditions",
+    MechanismTag.REGULATORY_CAPTURE.value: "Regulators serving the interests of the regulated",
+    MechanismTag.CORRUPTION_SPIRAL.value: "Self-reinforcing growth of corrupt practice",
+    MechanismTag.CREDIT_EXPANSION.value: "Rapid growth in lending/leverage",
+    MechanismTag.DEBT_OVERHANG.value: "Accumulated debt suppressing future growth or investment",
+    MechanismTag.CURRENCY_CRISIS.value: "Sudden loss of confidence in a currency's value",
+    MechanismTag.ASSET_BUBBLE.value: "Asset prices detached from fundamentals",
+    MechanismTag.GENERATIONAL_FORGETTING.value: "Lessons from a past crisis lost as generations turn over",
+    MechanismTag.COHESION_EROSION.value: "Weakening of shared identity or mutual trust within a group",
+    MechanismTag.IDENTITY_POLARIZATION.value: "Hardening of group identity into opposed factions",
+    MechanismTag.CULTURAL_DECADENCE.value: "Declining vigor or discipline in cultural norms",
+    MechanismTag.HUBRIS_CULTURE.value: "Overconfidence born of past success",
+    MechanismTag.REFORM_RESISTANCE.value: "Entrenched interests blocking needed change",
 }
 
 

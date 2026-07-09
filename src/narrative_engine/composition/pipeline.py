@@ -109,6 +109,7 @@ def _build_instance_from_cluster(
     instance = ArcInstance(
         arc_type=arc_type,
         canonical_name=canonical_name,
+        scope_id=first_ep.scope_id,
         start_date=first_ep.start_date,
         end_date=last_ep.end_date,
     )
@@ -307,6 +308,7 @@ class CompositionPipeline:
         cycle = Cycle(
             name=instance.canonical_name,
             scale=self.config.scale,
+            scope_id=instance.scope_id,
             start_date=instance.start_date,
             end_date=instance.end_date,
             dominant_arc_types=[arc_type],

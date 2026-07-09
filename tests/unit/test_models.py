@@ -20,6 +20,7 @@ from narrative_engine.models import (
     EpisodeLink,
     ExtractionRecord,
     LinkStatus,
+    MechanismTag,
     ReviewStatus,
     SourcePassage,
     Thesis,
@@ -187,7 +188,7 @@ class TestArcDefinition:
             from_phase=ArcPhase.DISTRESS,
             to_phase=ArcPhase.PANIC,
             base_weight=0.4,
-            conditioning_mechanisms=["leverage_buildup"],
+            conditioning_mechanisms=[MechanismTag.CREDIT_EXPANSION],
             conditioned_weight=0.75,
         )
         arc_def = ArcDefinition(

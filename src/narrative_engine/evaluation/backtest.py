@@ -148,7 +148,7 @@ class BacktestEngine:
         # Check watch conditions
         actual_lower = actual_outcome.lower()
 
-        for indicator in thesis.watch_conditions:
+        for indicator in thesis.watch_for_indicators:
             if indicator.lower() not in actual_lower:
                 factors.append(f"Missed indicator: {indicator}")
 

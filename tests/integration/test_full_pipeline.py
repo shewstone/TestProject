@@ -114,6 +114,7 @@ async def test_full_pipeline(engine, session):
             arc_match_score=1.0,
             phase_compatibility=0.8,
             cycle_context_score=0.9,
+            mechanism_match_score=0.5,
             combined_score=0.88,
             retrieval_method="hybrid",
             reasoning="Same arc type",
@@ -127,7 +128,7 @@ async def test_full_pipeline(engine, session):
     assert thesis is not None
     assert thesis.dominant_continuation is not None
     assert thesis.confidence is not None
-    assert len(thesis.watch_conditions) > 0
+    assert len(thesis.watch_for_indicators) > 0
 
     # Verify pattern matching
     assert thesis.dominant_continuation.probability > 0

@@ -5,7 +5,7 @@ from uuid import uuid4
 
 import pytest
 
-from narrative_engine.models import ArcPhase, ArcType, Cycle, CycleScale, Episode, Thesis
+from narrative_engine.models import ArcPhase, ArcType, Cycle, CycleScale, Episode, MechanismTag, Thesis
 from narrative_engine.storage.repositories import (
     CycleRepository,
     EpisodeRepository,
@@ -52,6 +52,24 @@ class TestEpisodeRepository:
         assert retrieved is not None
         assert retrieved.id == created.id
         assert retrieved.title == created.title
+
+    @pytest.mark.asyncio
+    async def test_mechanism_tags_round_trip(self, db_session, sample_episode):
+        """Episode.mechanism_tags survives create + retrieve (Sec 3.8)."""
+        sample_episode.mechanism_tags = [
+            MechanismTag.CREDIT_EXPANSION,
+            MechanismTag.ASSET_BUBBLE,
+        ]
+        repo = EpisodeRepository(db_session)
+
+        created = await repo.create(sample_episode)
+        retrieved = await repo.get_by_id(created.id)
+
+        assert retrieved is not None
+        assert retrieved.mechanism_tags == [
+            MechanismTag.CREDIT_EXPANSION,
+            MechanismTag.ASSET_BUBBLE,
+        ]
 
     @pytest.mark.asyncio
     async def test_get_by_id_not_found(self, db_session):

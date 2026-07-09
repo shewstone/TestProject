@@ -214,6 +214,10 @@ class EpisodeORM(Base):
     resolution: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     consequences: Mapped[list] = mapped_column(JSON, default=list)
 
+    # Structural drivers (design doc Sec 3.8): MechanismTag values, assigned
+    # during classification alongside arc_type/arc_phase.
+    mechanism_tags: Mapped[list] = mapped_column(JSON, default=list)
+
     # Arc classification
     arc_type: Mapped[Optional[ArcType]] = mapped_column(Enum(ArcType), nullable=True)
     arc_phase: Mapped[Optional[ArcPhase]] = mapped_column(Enum(ArcPhase), nullable=True)
@@ -296,6 +300,7 @@ class CycleORM(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     scale: Mapped[CycleScale] = mapped_column(Enum(CycleScale), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    scope_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
     # Temporal bounds
     start_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -350,6 +355,7 @@ class CycleORM(Base):
     __table_args__ = (
         Index("ix_cycles_scale", "scale"),
         Index("ix_cycles_parent_id", "parent_cycle_id"),
+        Index("ix_cycles_scope_id", "scope_id"),
     )
 
     def __repr__(self) -> str:

@@ -10,6 +10,7 @@ Implements the fixed-order staged pipeline from design doc Sec 6.2 stage 6:
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Sequence, Set, Tuple
@@ -21,6 +22,23 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from narrative_engine.models import Actor, ArcPhase, ArcType, Episode
 from narrative_engine.storage.orm_models import EpisodeORM
+
+_NON_WORD_RE = re.compile(r"[^\w\s]")
+_WHITESPACE_RE = re.compile(r"\s+")
+
+
+def normalize_actor_name(name: str) -> str:
+    """Alias-normalized actor name: lowercased, punctuation stripped,
+    whitespace collapsed.
+
+    Interim substitute for entity resolution (design doc Sec 6.2 stage 6
+    item 2, "acceptable interim debt" until full entity resolution lands).
+    Actor.id is a random UUID minted per extraction, so two independently
+    extracted mentions of the same actor never share an id -- gating on id
+    made the actor-overlap stage reject nearly every real match.
+    """
+    normalized = _NON_WORD_RE.sub("", name.strip().lower())
+    return _WHITESPACE_RE.sub(" ", normalized).strip()
 
 
 @dataclass
@@ -252,12 +270,16 @@ class ArcIdentityResolver:
         return score
     
     def _calculate_actor_overlap(self, a: Episode, b: Episode) -> float:
-        """Calculate Jaccard similarity of actor sets."""
+        """Calculate Jaccard similarity of actor sets, matched by
+        alias-normalized name (see normalize_actor_name) rather than
+        Actor.id, since independently extracted episodes never share ids
+        for the same real-world actor.
+        """
         if not a.actors or not b.actors:
             return 0.5  # Neutral if no actors
-        
-        actors_a = {actor.id for actor in a.actors}
-        actors_b = {actor.id for actor in b.actors}
+
+        actors_a = {normalize_actor_name(actor.name) for actor in a.actors}
+        actors_b = {normalize_actor_name(actor.name) for actor in b.actors}
         
         if not actors_a or not actors_b:
             return 0.0
@@ -511,15 +533,12 @@ class DisambiguationEngine:
             if gap > timedelta(days=365 * 3):  # 3+ year gaps are suspicious
                 risks.append(f"Large temporal gap: {gap.days} days between episodes")
         
-        # Check for actor discontinuity
-        all_actors = set()
-        for ep in cluster:
-            all_actors.update(a.id for a in ep.actors)
-        
+        # Check for actor discontinuity (alias-normalized name match --
+        # Actor.id is a per-extraction UUID, see normalize_actor_name)
         actor_continuity_scores = []
         for i in range(len(sorted_eps) - 1):
-            current_actors = {a.id for a in sorted_eps[i].actors}
-            next_actors = {a.id for a in sorted_eps[i+1].actors}
+            current_actors = {normalize_actor_name(a.name) for a in sorted_eps[i].actors}
+            next_actors = {normalize_actor_name(a.name) for a in sorted_eps[i+1].actors}
             
             if current_actors and next_actors:
                 overlap = len(current_actors & next_actors) / len(current_actors | next_actors)

@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from narrative_engine.extraction.client import ExtractionPipeline
 from narrative_engine.extraction.config import ExtractionPipelineConfig
-from narrative_engine.models import Actor, ArcPhase, ArcType, Episode
+from narrative_engine.models import Actor, ArcPhase, ArcType, Episode, MechanismTag
 from narrative_engine.storage.repositories import (
     RepositoryFactory,
 )
@@ -216,6 +216,13 @@ class ExtractionOrchestrator:
                         sec.get("confidence", 0.5),
                     )
                 )
+
+        # Handle mechanism tags (design doc Sec 3.8): unrecognized tags are
+        # skipped, not fatal -- the LLM occasionally drifts from the
+        # vocabulary given in the prompt.
+        for tag in classification.get("mechanism_tags", []):
+            with suppress(ValueError):
+                episode.mechanism_tags.append(MechanismTag(tag))
 
         # TODO: Second-pass classification with nearest neighbors
         # Requires vector search for similar episodes

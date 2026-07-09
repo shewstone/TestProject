@@ -50,51 +50,71 @@ class EmbeddingGenerator:
         embeddings = self.model.encode(texts, convert_to_numpy=True, batch_size=32)
         return [e.tolist() for e in embeddings]
 
+    def render_structural_template(self, episode: Episode) -> str:
+        """Deterministically render the episode's abstract narrative shape
+        (design doc Sec 3.3): arc type, phase, actor roles (not names), and
+        the sequence of conditions/mechanics/tension/resolution -- never
+        raw title/summary text, actor names, location, or dates.
+
+        This is what makes the structural embedding place/date-blind (so
+        Athens-Sparta can embed near Wilhelmine Germany-Britain): title and
+        summary are natural-language prose anchored to the specific
+        happening, and actor names are proper nouns, so including either
+        re-introduces the exact identity signal the structural/surface
+        split (Sec 3.3a) exists to keep separate.
+        """
+        lines: List[str] = []
+
+        if episode.arc_type:
+            lines.append(f"Arc: {episode.arc_type.value}")
+
+        if episode.arc_phase:
+            lines.append(f"Phase: {episode.arc_phase.value}")
+
+        if episode.actors:
+            # Controlled-vocabulary roles only, deduped and order-preserved.
+            seen = set()
+            roles = []
+            for actor in episode.actors:
+                if actor.role not in seen:
+                    seen.add(actor.role)
+                    roles.append(actor.role)
+            lines.append(f"Actor roles: {', '.join(roles)}")
+
+        if episode.initiating_conditions:
+            lines.append("Initiating conditions:")
+            lines.extend(f"- {c}" for c in episode.initiating_conditions)
+
+        if episode.escalation_mechanics:
+            lines.append("Escalation mechanics:")
+            lines.extend(f"- {m}" for m in episode.escalation_mechanics)
+
+        if episode.tension:
+            lines.append(f"Tension: {episode.tension}")
+
+        if episode.resolution:
+            lines.append(f"Resolution: {episode.resolution}")
+
+        if episode.consequences:
+            lines.append("Consequences:")
+            lines.extend(f"- {c}" for c in episode.consequences)
+
+        return "\n".join(lines)
+
     def generate_structural_embedding(self, episode: Episode) -> List[float]:
         """Generate the structural embedding: analogy signal, NOT identity.
 
-        Renders the episode's abstract narrative structure -- arc type, phase,
-        actor roles, conditions, escalation, tension -- rather than raw prose.
-        This is what makes cross-domain analogy matching work (Athens-Sparta
-        embeds near Germany-Britain), because it is place/date-blind by
-        design. That same place/date-blindness makes it WRONG for identity
-        resolution ("is this the same happening?") -- use
+        Embeds render_structural_template's place/date-blind rendering of
+        the episode's abstract narrative structure. This is what makes
+        cross-domain analogy matching work (Athens-Sparta embeds near
+        Germany-Britain). That same place/date-blindness makes it WRONG for
+        identity resolution ("is this the same happening?") -- use
         generate_surface_embedding for that (design doc Sec 3.3a).
 
         Consumers: analog retrieval (AnalogRetrievalEngine), discovery
         clustering. Never: SAME_EVENT_AS resolution, arc composition.
         """
-        # Construct structured representation
-        components = [
-            f"Title: {episode.title}",
-            f"Summary: {episode.summary}",
-        ]
-
-        if episode.arc_type:
-            components.append(f"Arc: {episode.arc_type.value}")
-
-        if episode.arc_phase:
-            components.append(f"Phase: {episode.arc_phase.value}")
-
-        if episode.actors:
-            actor_roles = ", ".join([f"{a.role}:{a.name}" for a in episode.actors[:5]])  # Top 5 actors
-            components.append(f"Actors: {actor_roles}")
-
-        if episode.initiating_conditions:
-            conditions = "; ".join(episode.initiating_conditions[:3])
-            components.append(f"Initiating conditions: {conditions}")
-
-        if episode.escalation_mechanics:
-            mechanics = "; ".join(episode.escalation_mechanics[:3])
-            components.append(f"Escalation: {mechanics}")
-
-        if episode.tension:
-            components.append(f"Tension: {episode.tension}")
-
-        # Join into single string for embedding
-        text = "\n".join(components)
-
-        return self.generate(text)
+        return self.generate(self.render_structural_template(episode))
 
     def generate_surface_embedding(self, episode: Episode) -> List[float]:
         """Generate the surface embedding: identity signal, NOT analogy.

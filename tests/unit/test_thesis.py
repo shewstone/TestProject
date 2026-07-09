@@ -7,6 +7,7 @@ from narrative_engine.models import (
     ArcType,
     Continuation,
     Episode,
+    MechanismTag,
     ThesisConfidence,
 )
 from narrative_engine.retrieval.analog_retrieval import RetrievedAnalog
@@ -42,6 +43,7 @@ class TestThesisGenerator:
             arc_match_score=1.0,
             phase_compatibility=1.0,
             cycle_context_score=0.8,
+            mechanism_match_score=0.5,
             combined_score=0.95,
             retrieval_method="hybrid",
             reasoning="High similarity",
@@ -96,6 +98,7 @@ class TestThesisGenerator:
             arc_match_score=1.0,
             phase_compatibility=1.0,
             cycle_context_score=0.8,
+            mechanism_match_score=0.5,
             combined_score=0.9,
             retrieval_method="hybrid",
             reasoning="Similar",
@@ -133,6 +136,7 @@ class TestThesisGenerator:
                 arc_match_score=0.9,
                 phase_compatibility=0.9,
                 cycle_context_score=0.9,
+                mechanism_match_score=0.5,
                 combined_score=0.9,
                 retrieval_method="hybrid",
                 reasoning="Strong",
@@ -155,6 +159,52 @@ class TestThesisGenerator:
         confidence = generator._calculate_confidence(evidence, continuations)
         assert confidence in [ThesisConfidence.HIGH, ThesisConfidence.MEDIUM]
 
+    def test_generate_populates_thesis_from_mechanism_tags(self):
+        """generate() populates analog_episode_ids/watch_for_indicators, and
+        prefers mechanism_tags over escalation_mechanics for watch conditions
+        when an analog has been tagged (Sec 3.8)."""
+        query_episode = Episode(
+            id=uuid4(),
+            title="Query episode",
+            summary="Present-day situation",
+        )
+
+        analog_episodes = [
+            Episode(
+                id=uuid4(),
+                title=f"Analog {i}",
+                summary="Historical analog",
+                resolution="Market bottomed",
+                consequences=["Recovery began"],
+                escalation_mechanics=["Panic selling"],
+                mechanism_tags=[MechanismTag.CREDIT_EXPANSION, MechanismTag.ASSET_BUBBLE],
+            )
+            for i in range(3)
+        ]
+
+        analogs = [
+            RetrievedAnalog(
+                episode=ep,
+                semantic_similarity=0.9,
+                arc_match_score=0.9,
+                phase_compatibility=0.9,
+                cycle_context_score=0.9,
+                mechanism_match_score=1.0,
+                combined_score=0.9,
+                retrieval_method="hybrid",
+                reasoning="Strong match",
+            )
+            for ep in analog_episodes
+        ]
+
+        generator = ThesisGenerator(min_analogs=2)
+        thesis = generator.generate(query_episode, analogs)
+
+        assert sorted(thesis.analog_episode_ids) == sorted(ep.id for ep in analog_episodes)
+        assert len(thesis.analog_similarity_scores) == len(analog_episodes)
+        assert "credit expansion" in thesis.watch_for_indicators
+        assert "Panic selling" not in thesis.watch_for_indicators
+
 
 class TestAnalogEvidence:
     """Tests for analog evidence data class."""
@@ -173,6 +223,7 @@ class TestAnalogEvidence:
             arc_match_score=0.7,
             phase_compatibility=0.9,
             cycle_context_score=0.6,
+            mechanism_match_score=0.5,
             combined_score=0.75,
             retrieval_method="vector",
             reasoning="Similar arc",
