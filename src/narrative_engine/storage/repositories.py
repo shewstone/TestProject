@@ -10,9 +10,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
 from narrative_engine.logging_config import get_logger, LogTimer
-from narrative_engine.models import Actor, Cycle, Episode, Thesis
+from narrative_engine.models import (
+    Actor,
+    ArcAssignment,
+    Cycle,
+    CycleMembership,
+    Episode,
+    EpisodeLink,
+    Thesis,
+)
 from narrative_engine.storage.orm_models import (
+    CycleMembershipORM,
     CycleORM,
+    EpisodeLinkORM,
     EpisodeORM,
     ThesisORM,
 )
@@ -300,6 +310,7 @@ class CycleRepository:
             dominant_arc_types=cycle.dominant_arc_types,
             phase_estimate=cycle.phase_estimate,
             framework_source=cycle.framework_source,
+            is_arc_instance=cycle.is_arc_instance,
         )
         self.session.add(orm_cycle)
         await self.session.flush()
@@ -333,15 +344,16 @@ class CycleRepository:
         return [self._from_orm(c) for c in result.scalars().all()]
 
     async def add_episode(self, cycle_id: UUID, episode_id: UUID) -> None:
-        """Add episode to cycle."""
-        from narrative_engine.storage.orm_models import cycle_episode_association
+        """Add episode to cycle as a plain attested/auto membership.
 
-        await self.session.execute(
-            cycle_episode_association.insert().values(
-                cycle_id=cycle_id,
-                episode_id=episode_id,
-            )
-        )
+        For memberships that need link_status/review_status/salience/
+        phase_coverage set intentionally (e.g. composition's inferred
+        COMPOSES links), use CycleMembershipRepository.create instead.
+        """
+        from narrative_engine.storage.orm_models import CycleMembershipORM
+
+        self.session.add(CycleMembershipORM(episode_id=episode_id, cycle_id=cycle_id))
+        await self.session.flush()
 
     def _from_orm(self, orm: CycleORM) -> Cycle:
         """Convert ORM to Pydantic model."""
@@ -358,6 +370,7 @@ class CycleRepository:
             dominant_arc_types=orm.dominant_arc_types,
             phase_estimate=orm.phase_estimate,
             framework_source=orm.framework_source,
+            is_arc_instance=orm.is_arc_instance,
             created_at=orm.created_at,
             updated_at=orm.updated_at,
         )
@@ -469,6 +482,86 @@ class ThesisRepository:
         )
 
 
+class CycleMembershipRepository:
+    """Repository for CycleMembership (episode <-> cycle) operations.
+
+    Used for memberships that need link_status/review_status/salience/
+    phase_coverage set intentionally -- in particular, the composition
+    pass's inferred COMPOSES links (design doc Sec 6.2 stage 6).
+    """
+
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+
+    async def create(self, membership: CycleMembership) -> CycleMembership:
+        """Create a new cycle membership."""
+        orm_membership = CycleMembershipORM(
+            id=membership.id,
+            episode_id=membership.episode_id,
+            cycle_id=membership.cycle_id,
+            reading=membership.reading.model_dump(mode="json") if membership.reading else None,
+            salience=membership.salience,
+            phase_coverage=membership.phase_coverage,
+            link_status=membership.link_status.value,
+            review_status=membership.review_status.value,
+        )
+        self.session.add(orm_membership)
+        await self.session.flush()
+        return membership
+
+    async def get_by_cycle(self, cycle_id: UUID) -> Sequence[CycleMembership]:
+        """Get all memberships for a cycle."""
+        result = await self.session.execute(
+            select(CycleMembershipORM).where(CycleMembershipORM.cycle_id == cycle_id)
+        )
+        return [self._from_orm(m) for m in result.scalars().all()]
+
+    def _from_orm(self, orm: CycleMembershipORM) -> CycleMembership:
+        return CycleMembership(
+            id=orm.id,
+            episode_id=orm.episode_id,
+            cycle_id=orm.cycle_id,
+            reading=ArcAssignment(**orm.reading) if orm.reading else None,
+            salience=orm.salience,
+            phase_coverage=orm.phase_coverage,
+            link_status=orm.link_status,
+            review_status=orm.review_status,
+            created_at=orm.created_at,
+        )
+
+
+class EpisodeLinkRepository:
+    """Repository for EpisodeLink (episode <-> episode) operations.
+
+    Covers CAUSES, PRECEDES, SAME_EVENT_AS edges. Construction always goes
+    through the EpisodeLink Pydantic model first, so the causal-attestation
+    validator (Sec 4: CAUSES must be attested) runs before anything reaches
+    the DB -- in addition to the DB's own chk_causal_must_be_attested CHECK.
+    """
+
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+
+    async def create(self, link: EpisodeLink) -> EpisodeLink:
+        """Create a new episode link. Raises ValueError (via EpisodeLink's
+        validator) if it's a CAUSES edge with link_status=inferred."""
+        orm_link = EpisodeLinkORM(
+            id=link.id,
+            source_episode_id=link.source_episode_id,
+            target_episode_id=link.target_episode_id,
+            edge_kind=link.edge_kind.value,
+            link_status=link.link_status.value,
+            distance=link.distance,
+            evidence=link.evidence,
+            review_status=link.review_status.value,
+            reviewed_by=link.reviewed_by,
+            reviewed_at=link.reviewed_at,
+        )
+        self.session.add(orm_link)
+        await self.session.flush()
+        return link
+
+
 class RepositoryFactory:
     """Factory for creating repositories with shared session."""
 
@@ -477,6 +570,8 @@ class RepositoryFactory:
         self._episodes: Optional[EpisodeRepository] = None
         self._cycles: Optional[CycleRepository] = None
         self._theses: Optional[ThesisRepository] = None
+        self._cycle_memberships: Optional[CycleMembershipRepository] = None
+        self._episode_links: Optional[EpisodeLinkRepository] = None
 
     @property
     def episodes(self) -> EpisodeRepository:
@@ -495,3 +590,15 @@ class RepositoryFactory:
         if self._theses is None:
             self._theses = ThesisRepository(self.session)
         return self._theses
+
+    @property
+    def cycle_memberships(self) -> CycleMembershipRepository:
+        if self._cycle_memberships is None:
+            self._cycle_memberships = CycleMembershipRepository(self.session)
+        return self._cycle_memberships
+
+    @property
+    def episode_links(self) -> EpisodeLinkRepository:
+        if self._episode_links is None:
+            self._episode_links = EpisodeLinkRepository(self.session)
+        return self._episode_links

@@ -8,13 +8,19 @@ from pydantic import ValidationError
 
 from narrative_engine.models import (
     Actor,
+    ArcAssignment,
     ArcDefinition,
     ArcPhase,
     ArcType,
     Cycle,
+    CycleMembership,
     CycleScale,
+    EdgeKind,
     Episode,
+    EpisodeLink,
     ExtractionRecord,
+    LinkStatus,
+    ReviewStatus,
     SourcePassage,
     Thesis,
 )
@@ -285,3 +291,108 @@ class TestIntegration:
         )
 
         assert episode.id in thesis.analog_episode_ids
+
+
+class TestEpisodeLink:
+    """Tests for the causal-attestation invariant (design doc Sec 4):
+    CAUSES edges must never be inferred. Enforced as a Pydantic validator,
+    mirroring the DB CHECK constraint chk_causal_must_be_attested."""
+
+    def test_causes_with_attested_status_is_valid(self) -> None:
+        link = EpisodeLink(
+            source_episode_id=uuid4(),
+            target_episode_id=uuid4(),
+            edge_kind=EdgeKind.CAUSES,
+            link_status=LinkStatus.ATTESTED,
+            evidence="explicit textual quote",
+        )
+        assert link.edge_kind == EdgeKind.CAUSES
+
+    def test_causes_with_inferred_status_is_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            EpisodeLink(
+                source_episode_id=uuid4(),
+                target_episode_id=uuid4(),
+                edge_kind=EdgeKind.CAUSES,
+                link_status=LinkStatus.INFERRED,
+            )
+
+    def test_composes_with_inferred_status_is_valid(self) -> None:
+        """COMPOSES (and other non-causal edge kinds) may be inferred --
+        only CAUSES is restricted."""
+        link = EpisodeLink(
+            source_episode_id=uuid4(),
+            target_episode_id=uuid4(),
+            edge_kind=EdgeKind.COMPOSES,
+            link_status=LinkStatus.INFERRED,
+        )
+        assert link.link_status == LinkStatus.INFERRED
+
+    def test_default_review_status_is_auto(self) -> None:
+        link = EpisodeLink(
+            source_episode_id=uuid4(),
+            target_episode_id=uuid4(),
+            edge_kind=EdgeKind.PRECEDES,
+        )
+        assert link.review_status == ReviewStatus.AUTO
+
+
+class TestCycleMembership:
+    """Tests for CycleMembership's two orthogonal axes (Sec 4):
+    link_status (how we know) and review_status (has a human ratified it)
+    must vary independently."""
+
+    def test_link_status_and_review_status_are_independent(self) -> None:
+        membership = CycleMembership(
+            episode_id=uuid4(),
+            cycle_id=uuid4(),
+            link_status=LinkStatus.INFERRED,
+            review_status=ReviewStatus.PENDING,
+        )
+        assert membership.link_status == LinkStatus.INFERRED
+        assert membership.review_status == ReviewStatus.PENDING
+
+    def test_attested_and_approved_is_representable(self) -> None:
+        membership = CycleMembership(
+            episode_id=uuid4(),
+            cycle_id=uuid4(),
+            link_status=LinkStatus.ATTESTED,
+            review_status=ReviewStatus.APPROVED,
+        )
+        assert membership.link_status == LinkStatus.ATTESTED
+        assert membership.review_status == ReviewStatus.APPROVED
+
+    def test_reading_carries_per_scope_arc_assignment(self) -> None:
+        membership = CycleMembership(
+            episode_id=uuid4(),
+            cycle_id=uuid4(),
+            reading=ArcAssignment(
+                arc_type=ArcType.HUBRIS_NEMESIS,
+                phase_index=2,
+                confidence=0.7,
+            ),
+        )
+        assert membership.reading.arc_type == ArcType.HUBRIS_NEMESIS
+        assert membership.reading.phase_index == 2
+
+    def test_phase_coverage_tracks_documented_phases(self) -> None:
+        membership = CycleMembership(
+            episode_id=uuid4(),
+            cycle_id=uuid4(),
+            phase_coverage=[0, 1],
+        )
+        assert membership.phase_coverage == [0, 1]
+
+
+class TestCycleIsArcInstance:
+    def test_defaults_to_false(self) -> None:
+        cycle = Cycle(name="US institutional cycle", scale=CycleScale.INSTITUTIONAL)
+        assert cycle.is_arc_instance is False
+
+    def test_arc_instance_cycle(self) -> None:
+        cycle = Cycle(
+            name="HUBRIS_NEMESIS, Wilhelmine Germany, 1890-1918",
+            scale=CycleScale.EPISODIC,
+            is_arc_instance=True,
+        )
+        assert cycle.is_arc_instance is True

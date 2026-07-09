@@ -7,7 +7,7 @@ from enum import Enum
 from typing import Any, Dict, List, Optional, Set
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class ThesisConfidence(str, Enum):
@@ -135,6 +135,94 @@ class ReviewStatus(str, Enum):
     PENDING = "pending"
     APPROVED = "approved"
     REJECTED = "rejected"
+    AUTO = "auto"  # Below review threshold; never entered the queue
+
+
+class ArcAssignment(BaseModel):
+    """A per-scope arc/phase reading for an episode.
+
+    The same episode can carry a different reading in each cycle it
+    belongs to (Sec 2): a trade war might be a REFORM_REACTION beat in one
+    polity's institutional cycle and a RISE_OVEREXTENSION beat in the
+    system cycle.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    arc_type: "ArcType"
+    phase_index: int
+    confidence: float = Field(default=0.5, ge=0.0, le=1.0)
+    rationale: Optional[str] = None  # short; stored for audit
+
+
+class CycleMembership(BaseModel):
+    """Episode <-> cycle membership, many-to-many with a per-scope reading.
+
+    The same episode can belong to multiple cycles (e.g. a trade war
+    belongs to each participating polity's cycle AND the system-scoped
+    cycle) with a different arc/phase reading in each -- `reading` carries
+    that. `link_status` and `review_status` are orthogonal axes (Sec 4):
+    link_status is *how we know* (attested vs. inferred), review_status is
+    *whether a human has ratified it*. They must never collapse into one
+    enum -- a composed-but-approved membership and an attested-but-pending
+    one are both representable states.
+
+    COMPOSES edges (episode -> arc-instance cycle) are a specialization of
+    this for cycles with is_arc_instance=True; phase_coverage is only
+    meaningful in that case.
+    """
+
+    model_config = ConfigDict(frozen=False)
+
+    id: UUID = Field(default_factory=uuid4)
+    episode_id: UUID
+    cycle_id: UUID
+
+    reading: Optional[ArcAssignment] = None
+    salience: float = Field(default=0.5, ge=0.0, le=1.0)
+    phase_coverage: List[int] = Field(default_factory=list)
+
+    link_status: LinkStatus = LinkStatus.ATTESTED
+    review_status: ReviewStatus = ReviewStatus.AUTO
+
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class EpisodeLink(BaseModel):
+    """Episode <-> episode edge: CAUSES, PRECEDES, SAME_EVENT_AS.
+
+    Distinct from CycleMembership (episode <-> cycle). The causal-
+    attestation invariant is enforced here at the model layer -- a
+    validator, not prose -- mirroring the DB CHECK constraint
+    (chk_causal_must_be_attested) so the invariant holds before a write
+    ever reaches Postgres: CAUSES edges must be ATTESTED, since the
+    composition pass has no textual evidence and can only ever produce
+    inferred links.
+    """
+
+    model_config = ConfigDict(frozen=False)
+
+    id: UUID = Field(default_factory=uuid4)
+    source_episode_id: UUID
+    target_episode_id: UUID
+    edge_kind: EdgeKind
+    link_status: LinkStatus = LinkStatus.ATTESTED
+    distance: Optional[float] = None  # semantic distance, for inferred links
+    evidence: Optional[str] = None  # quote (attested) or similarity score (inferred)
+    review_status: ReviewStatus = ReviewStatus.AUTO
+    reviewed_by: Optional[str] = None
+    reviewed_at: Optional[datetime] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+    @model_validator(mode="after")
+    def _causal_links_must_be_attested(self) -> "EpisodeLink":
+        if self.edge_kind == EdgeKind.CAUSES and self.link_status == LinkStatus.INFERRED:
+            raise ValueError(
+                "CAUSES edges must be attested: no inferred causal claims "
+                "(design doc Sec 4 invariant; mirrors DB CHECK "
+                "chk_causal_must_be_attested)"
+            )
+        return self
 
 
 class Continuation(BaseModel):
@@ -285,6 +373,11 @@ class Cycle(BaseModel):
 
     # Source framework (if bootstrapped)
     framework_source: Optional[str] = None  # e.g., "Turchin-secular-cycles"
+
+    # Arc instances (Sec 2) are episodic-scale cycles by convention,
+    # populated by the composition pass -- this flag is what distinguishes
+    # them from ordinary cycles for COMPOSES-vs-MEMBER_OF disambiguation.
+    is_arc_instance: bool = False
 
     # Metadata
     created_at: datetime = Field(default_factory=datetime.utcnow)

@@ -19,6 +19,7 @@ from sqlalchemy import (
     String,
     Table,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -45,22 +46,88 @@ episode_actor_association = Table(
 )
 
 
-cycle_episode_association = Table(
-    "cycle_episode_association",
-    Base.metadata,
-    Column(
-        "cycle_id",
-        UUID(as_uuid=True),
-        ForeignKey("cycles.id", ondelete="CASCADE"),
-        primary_key=True,
-    ),
-    Column(
-        "episode_id",
-        UUID(as_uuid=True),
-        ForeignKey("episodes.id", ondelete="CASCADE"),
-        primary_key=True,
-    ),
-)
+class CycleMembershipORM(Base):
+    """ORM model for CycleMembership: episode <-> cycle, many-to-many with
+    a per-scope reading (design doc Sec 4).
+
+    Replaces the old bare cycle_episode_association table, which had no
+    room for link_status/review_status/salience/phase_coverage. COMPOSES
+    edges from the composition pass are rows here where the target cycle
+    has is_arc_instance=True; phase_coverage is only meaningful in that
+    case. Also used as the `secondary` table for the plain EpisodeORM.cycles
+    / CycleORM.episodes many-to-many relationships.
+    """
+
+    __tablename__ = "cycle_memberships"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    episode_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("episodes.id", ondelete="CASCADE"), nullable=False
+    )
+    cycle_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("cycles.id", ondelete="CASCADE"), nullable=False
+    )
+
+    reading: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    salience: Mapped[float] = mapped_column(Float, default=0.5)
+    phase_coverage: Mapped[list] = mapped_column(JSON, default=list)
+
+    # attested | inferred (evidentiary status -- orthogonal to review_status)
+    link_status: Mapped[str] = mapped_column(String(50), default="attested")
+    # pending | approved | rejected | auto (has a human ratified it)
+    review_status: Mapped[str] = mapped_column(String(50), default="auto")
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow, nullable=False
+    )
+
+    __table_args__ = (
+        Index("ix_cycle_memberships_episode", "episode_id"),
+        Index("ix_cycle_memberships_cycle", "cycle_id"),
+        Index("ix_cycle_memberships_link_status", "link_status"),
+        Index("ix_cycle_memberships_review_status", "review_status"),
+        UniqueConstraint("episode_id", "cycle_id", name="uq_cycle_membership"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<CycleMembershipORM(episode_id={self.episode_id}, cycle_id={self.cycle_id})>"
+
+
+class EpisodeLinkORM(Base):
+    """ORM model for EpisodeLink: episode <-> episode edges (CAUSES,
+    PRECEDES, SAME_EVENT_AS). Distinct from CycleMembershipORM (episode <->
+    cycle). Maps to the episode_links table created by the
+    20260709_162900 migration, which already carries the DB-level
+    chk_causal_must_be_attested CHECK constraint mirrored by
+    EpisodeLink._causal_links_must_be_attested at the Pydantic layer.
+    """
+
+    __tablename__ = "episode_links"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    source_episode_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("episodes.id", ondelete="CASCADE"), nullable=False
+    )
+    target_episode_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("episodes.id", ondelete="CASCADE"), nullable=False
+    )
+    edge_kind: Mapped[str] = mapped_column(String(50), nullable=False)
+    link_status: Mapped[str] = mapped_column(String(50), default="attested")
+    distance: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    evidence: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    review_status: Mapped[str] = mapped_column(String(50), default="pending")
+    reviewed_by: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow, nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint("source_episode_id", "target_episode_id", "edge_kind", name="uq_episode_link"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<EpisodeLinkORM(edge_kind={self.edge_kind}, {self.source_episode_id}->{self.target_episode_id})>"
 
 
 class ActorORM(Base):
@@ -184,8 +251,9 @@ class EpisodeORM(Base):
     )
     cycles: Mapped[List["CycleORM"]] = relationship(
         "CycleORM",
-        secondary=cycle_episode_association,
+        secondary="cycle_memberships",
         back_populates="episodes",
+        viewonly=True,
     )
 
     # Vector embeddings (CORRECTION v0.5, Sec 3.3a): two distinct roles.
@@ -244,6 +312,9 @@ class CycleORM(Base):
     dominant_arc_types: Mapped[list] = mapped_column(JSON, default=list)
     phase_estimate: Mapped[Optional[ArcPhase]] = mapped_column(Enum(ArcPhase), nullable=True)
     framework_source: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    # Arc instances (Sec 2) are episodic-scale cycles by convention,
+    # populated by the composition pass.
+    is_arc_instance: Mapped[bool] = mapped_column(default=False, nullable=False)
 
     # Metadata
     created_at: Mapped[datetime] = mapped_column(
@@ -270,8 +341,9 @@ class CycleORM(Base):
     )
     episodes: Mapped[List["EpisodeORM"]] = relationship(
         "EpisodeORM",
-        secondary=cycle_episode_association,
+        secondary="cycle_memberships",
         back_populates="cycles",
+        viewonly=True,
     )
 
     # Indexes

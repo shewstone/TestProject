@@ -16,8 +16,18 @@ from narrative_engine.composition.arc_instance import (
     PhaseCoverage,
 )
 from narrative_engine.composition.identity import ArcIdentityResolver
-from narrative_engine.models import ArcPhase, ArcType, CycleScale, Episode
+from narrative_engine.models import (
+    ArcPhase,
+    ArcType,
+    Cycle,
+    CycleMembership,
+    CycleScale,
+    Episode,
+    LinkStatus,
+    ReviewStatus,
+)
 from narrative_engine.storage.orm_models import EpisodeORM
+from narrative_engine.storage.repositories import CycleMembershipRepository, CycleRepository
 
 
 @dataclass
@@ -280,6 +290,63 @@ class CompositionPipeline:
             scale=self.config.scale,
             expected_phases=expected_phases,
         )
+
+    async def persist_instance(self, instance: ArcInstance, arc_type: ArcType) -> Cycle:
+        """Persist a composed ArcInstance as an is_arc_instance Cycle plus
+        per-episode CycleMembership rows (design doc Sec 6.2 stage 6).
+
+        Composition has no textual evidence, so every membership is
+        link_status=INFERRED; review_status follows the size-threshold
+        guardrail ("instances above a size threshold get review_status
+        pending"). This path never touches EpisodeLinkORM, so it
+        structurally cannot emit a CAUSES edge -- the invariant (Sec 4)
+        holds by construction, not just by validation.
+        """
+        phase_order = _infer_expected_phases(arc_type)
+
+        cycle = Cycle(
+            name=instance.canonical_name,
+            scale=self.config.scale,
+            start_date=instance.start_date,
+            end_date=instance.end_date,
+            dominant_arc_types=[arc_type],
+            is_arc_instance=True,
+        )
+
+        cycle_repo = CycleRepository(self.session)
+        membership_repo = CycleMembershipRepository(self.session)
+
+        await cycle_repo.create(cycle)
+
+        all_episode_ids = {
+            episode_id
+            for coverage in instance.phases.values()
+            for episode_id in coverage.episode_ids
+        }
+        review_status = (
+            ReviewStatus.PENDING
+            if len(all_episode_ids) > self.config.min_episodes_per_cluster
+            else ReviewStatus.AUTO
+        )
+
+        for phase, coverage in instance.phases.items():
+            try:
+                phase_index = phase_order.index(phase)
+            except ValueError:
+                phase_index = -1
+
+            for episode_id in coverage.episode_ids:
+                await membership_repo.create(
+                    CycleMembership(
+                        episode_id=episode_id,
+                        cycle_id=cycle.id,
+                        phase_coverage=[phase_index] if phase_index >= 0 else [],
+                        link_status=LinkStatus.INFERRED,
+                        review_status=review_status,
+                    )
+                )
+
+        return cycle
 
     async def _get_episodes_by_arc(self, arc_type: ArcType) -> Sequence[EpisodeORM]:
         """Fetch all episodes of a given arc type."""
