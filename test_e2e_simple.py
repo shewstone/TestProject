@@ -98,18 +98,16 @@ async def test_database_connection():
         query="What happens after a credit boom panic phase?",
         query_date=datetime.now(),
         dominant_continuation=Continuation(
-            scenario="Soft landing with government intervention",
+            description="Soft landing with government intervention",
             probability=0.65,
-            description="Markets stabilize after intervention",
-            supporting_analogs=[],
-            key_uncertainties=["Speed of policy response", "Market confidence"],
+            supporting_analogs=3,
         ),
         confidence=ThesisConfidence.MEDIUM,
         model_version="narrative-engine-v0.1.0",
         taxonomy_version="canonical-v1.0",
     )
     print(f"   ✓ Created thesis: {thesis.query[:40]}...")
-    print(f"     Prediction: {thesis.dominant_continuation.scenario}")
+    print(f"     Prediction: {thesis.dominant_continuation.description}")
     print(f"     Probability: {thesis.dominant_continuation.probability}")
 
     print("\n" + "=" * 60)
