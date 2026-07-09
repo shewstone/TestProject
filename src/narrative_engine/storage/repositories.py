@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 from typing import List, Optional, Sequence
 from uuid import UUID
 
@@ -10,7 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
-from narrative_engine.logging_config import LogTimer
+from narrative_engine.logging_config import get_logger
 from narrative_engine.models import Actor, Cycle, Episode, Thesis
 from narrative_engine.storage.orm_models import (
     CycleORM,
@@ -18,7 +17,7 @@ from narrative_engine.storage.orm_models import (
     ThesisORM,
 )
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class EpisodeRepository:
