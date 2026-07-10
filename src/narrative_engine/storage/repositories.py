@@ -6,6 +6,7 @@ from typing import List, Optional, Sequence
 from uuid import UUID
 
 from sqlalchemy import func, select
+from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -20,11 +21,13 @@ from narrative_engine.models import (
     EpisodeLink,
     Thesis,
 )
+from narrative_engine.models import Scope
 from narrative_engine.storage.orm_models import (
     CycleMembershipORM,
     CycleORM,
     EpisodeLinkORM,
     EpisodeORM,
+    ScopeORM,
     ThesisORM,
 )
 
@@ -44,14 +47,16 @@ class EpisodeRepository:
                 orm_episode = self._to_orm(episode)
                 self.session.add(orm_episode)
                 await self.session.flush()
-                await self.session.refresh(orm_episode)
                 logger.info(
                     "episode_created",
                     episode_id=str(episode.id),
                     title=episode.title,
                     arc_type=episode.arc_type.value if episode.arc_type else None,
                 )
-                return self._from_orm(orm_episode)
+                # _to_orm persists every non-derived field (enforced by
+                # tests/unit/test_roundtrip.py), so the input model IS the
+                # stored state — no lossy read-back needed.
+                return episode
             except Exception as e:
                 logger.error(
                     "episode_create_failed",
@@ -153,19 +158,25 @@ class EpisodeRepository:
         embedding: List[float],
         kind: str = "structural",
     ) -> None:
-        """Set one of an episode's embeddings.
+        """Set one of an episode's embeddings, stamped with its epoch.
 
         kind is explicit ("structural" | "surface") because the two
         collections answer different questions and must never be swapped
-        (design doc Sec 3.3a).
+        (design doc Sec 3.3a). This is the single write choke point for
+        vectors: it must be impossible to store a vector without recording
+        which (render, model) epoch produced it (T4).
         """
+        from narrative_engine.retrieval.epochs import current_epoch
+
         orm_episode = await self.session.get(EpisodeORM, episode_id)
         if not orm_episode:
             raise ValueError(f"Episode {episode_id} not found")
         if kind == "structural":
             orm_episode.structural_embedding = embedding
+            orm_episode.structural_embedding_epoch = current_epoch("structural")
         elif kind == "surface":
             orm_episode.surface_embedding = embedding
+            orm_episode.surface_embedding_epoch = current_epoch("surface")
         else:
             raise ValueError(f"Unknown embedding kind: {kind}")
         await self.session.flush()
@@ -188,11 +199,22 @@ class EpisodeRepository:
         analog base. Arc-less retrieval (Sec 6.5.8) passes
         include_unclassified=True, since bare structural nearest-neighbor
         matching doesn't condition on arc labels at all.
+
+        Only vectors from the CURRENT structural epoch participate (T4):
+        vectors produced by an older render template or embedding model live
+        in a different similarity space, and comparing across spaces yields
+        silently meaningless scores. A smaller honest analog base beats a
+        larger corrupt one.
         """
+        from narrative_engine.retrieval.epochs import current_epoch
+
         query = select(
             EpisodeORM,
             EpisodeORM.structural_embedding.cosine_distance(embedding).label("distance"),
-        ).where(EpisodeORM.structural_embedding.is_not(None))
+        ).where(
+            EpisodeORM.structural_embedding.is_not(None),
+            EpisodeORM.structural_embedding_epoch == current_epoch("structural"),
+        )
 
         if not include_unclassified:
             query = query.where(EpisodeORM.classification_state != "unclassified")
@@ -207,7 +229,15 @@ class EpisodeRepository:
         return result.scalar() or 0
 
     def _to_orm(self, episode: Episode) -> EpisodeORM:
-        """Convert Pydantic model to ORM."""
+        """Convert Pydantic model to ORM.
+
+        HANDLED_FIELDS below is this converter's checklist: every
+        Episode field is either mapped here or listed as derived/unpersisted
+        with a justification. tests/unit/test_roundtrip.py enforces the
+        checklist is complete.
+        """
+        from narrative_engine.storage.orm_models import ActorORM, SourcePassageORM
+
         return EpisodeORM(
             id=episode.id,
             title=episode.title,
@@ -234,26 +264,47 @@ class EpisodeRepository:
             version=episode.version,
             surface_embedding=episode.surface_embedding,
             structural_embedding=episode.structural_embedding,
+            surface_embedding_epoch=episode.surface_embedding_epoch,
+            structural_embedding_epoch=episode.structural_embedding_epoch,
             created_at=episode.created_at,
             updated_at=episode.updated_at,
+            actors=[
+                ActorORM(
+                    id=a.id,
+                    name=a.name,
+                    role=a.role,
+                    attributes=dict(a.attributes),
+                )
+                for a in episode.actors
+            ],
+            source_passages=[
+                SourcePassageORM(
+                    work_id=sp.work_id,
+                    passage_id=sp.passage_id,
+                    text=sp.text,
+                    chapter=sp.chapter,
+                    section=sp.section,
+                    page=sp.page,
+                    historiographic_school=sp.historiographic_school,
+                )
+                for sp in episode.source_passages
+            ],
         )
 
     def _from_orm(self, orm: EpisodeORM) -> Episode:
         """Convert ORM to Pydantic model."""
         from narrative_engine.models import SourcePassage
 
-        # Avoid lazy loading - relationships must be eagerly loaded via selectinload
-        # If not loaded, return empty lists
-        try:
-            actors = orm.actors if hasattr(orm, '_actors') and orm._actors else []
-        except:
-            actors = []
-        
-        try:
-            source_passages = orm.source_passages if hasattr(orm, '_source_passages') and orm._source_passages else []
-        except:
-            source_passages = []
-        
+        # Relationships are only read when eagerly loaded (selectinload);
+        # touching an unloaded relationship on an async session raises
+        # MissingGreenlet, so unloaded collections come back empty.
+        unloaded = sa_inspect(orm).unloaded
+        actors = orm.actors if "actors" not in unloaded else []
+        source_passages = orm.source_passages if "source_passages" not in unloaded else []
+        parent_cycle_ids = (
+            {c.id for c in orm.cycles} if "cycles" not in unloaded else set()
+        )
+
         return Episode(
             id=orm.id,
             title=orm.title,
@@ -301,8 +352,11 @@ class EpisodeRepository:
             created_at=orm.created_at,
             updated_at=orm.updated_at,
             version=orm.version,
+            parent_cycle_ids=parent_cycle_ids,
             surface_embedding=orm.surface_embedding,
             structural_embedding=orm.structural_embedding,
+            surface_embedding_epoch=orm.surface_embedding_epoch,
+            structural_embedding_epoch=orm.structural_embedding_epoch,
         )
 
     def _update_orm(self, orm: EpisodeORM, episode: Episode) -> None:
@@ -352,6 +406,8 @@ class CycleRepository:
             phase_estimate=cycle.phase_estimate,
             framework_source=cycle.framework_source,
             is_arc_instance=cycle.is_arc_instance,
+            created_at=cycle.created_at,
+            updated_at=cycle.updated_at,
         )
         self.session.add(orm_cycle)
         await self.session.flush()
@@ -407,6 +463,8 @@ class CycleRepository:
 
     def _from_orm(self, orm: CycleORM) -> Cycle:
         """Convert ORM to Pydantic model."""
+        # Same unloaded-relationship discipline as EpisodeRepository._from_orm.
+        unloaded = sa_inspect(orm).unloaded
         return Cycle(
             id=orm.id,
             name=orm.name,
@@ -416,8 +474,12 @@ class CycleRepository:
             start_date=orm.start_date,
             end_date=orm.end_date,
             parent_cycle_id=orm.parent_cycle_id,
-            child_cycle_ids=set(),
-            episode_ids={e.id for e in (orm.episodes or [])},
+            child_cycle_ids=(
+                {c.id for c in orm.children} if "children" not in unloaded else set()
+            ),
+            episode_ids=(
+                {e.id for e in orm.episodes} if "episodes" not in unloaded else set()
+            ),
             dominant_arc_types=orm.dominant_arc_types,
             phase_estimate=orm.phase_estimate,
             framework_source=orm.framework_source,
@@ -449,7 +511,10 @@ class ThesisRepository:
                 else None
             ),
             alternative_continuations=thesis.alternative_continuations,
+            confidence=thesis.confidence.value,
             watch_for_indicators=thesis.watch_for_indicators,
+            key_uncertainties=thesis.key_uncertainties,
+            narrative_synthesis=thesis.narrative_synthesis,
             confidence_interval=thesis.confidence_interval,
             estimated_duration=thesis.estimated_duration,
             resolution_criteria=thesis.resolution_criteria,
@@ -457,7 +522,13 @@ class ThesisRepository:
                 str(eid): [passage.model_dump(mode="json") for passage in passages]
                 for eid, passages in thesis.cited_episodes.items()
             },
+            resolved=thesis.resolved,
+            resolution_date=thesis.resolution_date,
+            resolution_outcome=thesis.resolution_outcome,
+            brier_score=thesis.brier_score,
             mode=thesis.mode.value,
+            scope_registry_version=thesis.scope_registry_version,
+            created_at=thesis.created_at,
             model_version=thesis.model_version,
             taxonomy_version=thesis.taxonomy_version,
         )
@@ -485,14 +556,14 @@ class ThesisRepository:
         brier_score: Optional[float] = None,
     ) -> Optional[Thesis]:
         """Mark thesis as resolved with outcome."""
-        from datetime import datetime
+        from narrative_engine.models import utcnow
 
         orm_thesis = await self.session.get(ThesisORM, thesis_id)
         if not orm_thesis:
             return None
 
         orm_thesis.resolved = True
-        orm_thesis.resolution_date = datetime.utcnow()
+        orm_thesis.resolution_date = utcnow()
         orm_thesis.resolution_outcome = outcome
         orm_thesis.brier_score = brier_score
 
@@ -530,7 +601,10 @@ class ThesisRepository:
                 Continuation(**orm.dominant_continuation) if orm.dominant_continuation else None
             ),
             alternative_continuations=orm.alternative_continuations,
+            confidence=orm.confidence,
             watch_for_indicators=orm.watch_for_indicators,
+            key_uncertainties=orm.key_uncertainties,
+            narrative_synthesis=orm.narrative_synthesis,
             confidence_interval=orm.confidence_interval,
             estimated_duration=orm.estimated_duration,
             resolution_criteria=orm.resolution_criteria,
@@ -540,6 +614,7 @@ class ThesisRepository:
             resolution_outcome=orm.resolution_outcome,
             brier_score=orm.brier_score,
             mode=orm.mode,
+            scope_registry_version=orm.scope_registry_version,
             created_at=orm.created_at,
             model_version=orm.model_version,
             taxonomy_version=orm.taxonomy_version,
@@ -568,6 +643,7 @@ class CycleMembershipRepository:
             phase_coverage=membership.phase_coverage,
             link_status=membership.link_status.value,
             review_status=membership.review_status.value,
+            created_at=membership.created_at,
         )
         self.session.add(orm_membership)
         await self.session.flush()
@@ -591,6 +667,71 @@ class CycleMembershipRepository:
             link_status=orm.link_status,
             review_status=orm.review_status,
             created_at=orm.created_at,
+        )
+
+
+class ScopeRepository:
+    """Repository for Scope rows (T5). The packaged registry
+    (narrative_engine.scopes) is the resolution source of truth; this table
+    exists so scope ids are queryable/joinable in SQL."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+
+    async def create(self, scope: Scope) -> Scope:
+        self.session.add(self._to_orm(scope))
+        await self.session.flush()
+        return scope
+
+    async def get_by_id(self, scope_id: str) -> Optional[Scope]:
+        orm_scope = await self.session.get(ScopeORM, scope_id)
+        return self._from_orm(orm_scope) if orm_scope else None
+
+    async def list_all(self) -> Sequence[Scope]:
+        result = await self.session.execute(select(ScopeORM))
+        return [self._from_orm(s) for s in result.scalars().all()]
+
+    async def sync_from_registry(self, registry=None) -> int:
+        """Upsert every packaged-registry scope into the table. Returns the
+        number of scopes synced. Parents are inserted before children so the
+        self-FK is satisfied."""
+        if registry is None:
+            from narrative_engine.scopes import get_registry
+
+            registry = get_registry()
+
+        scopes = sorted(registry.all(), key=lambda s: s.parent_scope_id is not None)
+        for scope in scopes:
+            existing = await self.session.get(ScopeORM, scope.id)
+            if existing:
+                existing.kind = scope.kind
+                existing.name = scope.name
+                existing.parent_scope_id = scope.parent_scope_id
+                existing.aliases = list(scope.aliases)
+                existing.notes = scope.notes
+            else:
+                self.session.add(self._to_orm(scope))
+            await self.session.flush()
+        return len(scopes)
+
+    def _to_orm(self, scope: Scope) -> ScopeORM:
+        return ScopeORM(
+            id=scope.id,
+            kind=scope.kind,
+            name=scope.name,
+            parent_scope_id=scope.parent_scope_id,
+            aliases=list(scope.aliases),
+            notes=scope.notes,
+        )
+
+    def _from_orm(self, orm: ScopeORM) -> Scope:
+        return Scope(
+            id=orm.id,
+            kind=orm.kind,
+            name=orm.name,
+            parent_scope_id=orm.parent_scope_id,
+            aliases=orm.aliases,
+            notes=orm.notes,
         )
 
 
@@ -620,10 +761,65 @@ class EpisodeLinkRepository:
             review_status=link.review_status.value,
             reviewed_by=link.reviewed_by,
             reviewed_at=link.reviewed_at,
+            created_at=link.created_at,
         )
         self.session.add(orm_link)
         await self.session.flush()
         return link
+
+    async def get_by_id(self, link_id: UUID) -> Optional[EpisodeLink]:
+        """Get episode link by ID."""
+        orm_link = await self.session.get(EpisodeLinkORM, link_id)
+        return self._from_orm(orm_link) if orm_link else None
+
+    def _from_orm(self, orm: EpisodeLinkORM) -> EpisodeLink:
+        return EpisodeLink(
+            id=orm.id,
+            source_episode_id=orm.source_episode_id,
+            target_episode_id=orm.target_episode_id,
+            edge_kind=orm.edge_kind,
+            link_status=orm.link_status,
+            distance=orm.distance,
+            evidence=orm.evidence,
+            review_status=orm.review_status,
+            reviewed_by=orm.reviewed_by,
+            reviewed_at=orm.reviewed_at,
+            created_at=orm.created_at,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Converter exclusion allowlists (T3, docs/tickets/T3-model-orm-roundtrip-tests.md).
+#
+# Fields listed here are deliberately NOT persisted by the converters above,
+# each with a reason. tests/unit/test_roundtrip.py requires its maximal
+# instances to explicitly set every field not listed here, and requires those
+# fields to survive a create -> get round trip — so adding a model field
+# without deciding its persistence story fails a unit test by name instead of
+# silently writing nothing.
+# ---------------------------------------------------------------------------
+
+EPISODE_FIELDS_EXCLUDED = {
+    # Derived from CycleMembership rows (owned by CycleMembershipRepository /
+    # CycleRepository.add_episode); populated on read when the relationship
+    # is eagerly loaded, never written from the Episode aggregate.
+    "parent_cycle_ids",
+}
+
+CYCLE_FIELDS_EXCLUDED = {
+    # Derived: children own the parent_cycle_id FK; memberships own episode
+    # links. Populated on read when eagerly loaded, never written from Cycle.
+    "child_cycle_ids",
+    "episode_ids",
+}
+
+THESIS_FIELDS_EXCLUDED: set = set()
+
+CYCLE_MEMBERSHIP_FIELDS_EXCLUDED: set = set()
+
+EPISODE_LINK_FIELDS_EXCLUDED: set = set()
+
+SCOPE_FIELDS_EXCLUDED: set = set()
 
 
 class RepositoryFactory:

@@ -222,13 +222,21 @@ def compose_arc_instances_from_episodes(
     # and an unscoped US credit boom in the same candidate pool -- exactly
     # the false-merge class the scope partition exists to eliminate. They
     # still surface as size-1 instances rather than being silently dropped.
+    # Raw scope labels are normalized through the versioned alias registry
+    # (T5) so "US" and "United States" land in ONE partition instead of two
+    # (false-split protection). Unresolved labels keep their raw string as
+    # the partition key: distinct unknown labels never merge with each
+    # other, which preserves the false-merge protection this filter is for.
+    from narrative_engine.scopes import resolve_scope
+
     by_scope: Dict[str, List[Episode]] = {}
     unscoped: List[Episode] = []
     for episode in relevant:
         if episode.scope_id is None:
             unscoped.append(episode)
         else:
-            by_scope.setdefault(episode.scope_id, []).append(episode)
+            partition_key = resolve_scope(episode.scope_id) or episode.scope_id
+            by_scope.setdefault(partition_key, []).append(episode)
 
     instances: List[ArcInstance] = []
     for scope_episodes in by_scope.values():

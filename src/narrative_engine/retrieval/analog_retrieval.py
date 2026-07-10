@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from contextlib import suppress
-from dataclasses import dataclass
-from typing import List, Optional
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional
 from uuid import UUID
 
 import structlog
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from narrative_engine.models import (
@@ -15,6 +16,7 @@ from narrative_engine.models import (
     ArcType,
     ClassificationState,
     CycleScale,
+    EdgeKind,
     Episode,
     MechanismTag,
 )
@@ -37,6 +39,11 @@ class RetrievedAnalog:
     combined_score: float  # Weighted combination of above
     retrieval_method: str  # "vector", "graph", or "hybrid"
     reasoning: str  # Why this analog was selected
+    # Episodes collapsed into this analog as duplicate narrations of the
+    # same happening (T6): SAME_EVENT_AS-linked or heuristically merged.
+    # Kept for disclosure -- theses report how many narrations were
+    # collapsed so branch frequencies stay "counts, not vibes" (Sec 6.5.6).
+    duplicate_ids: List[UUID] = field(default_factory=list)
 
 
 class AnalogRetrievalEngine:
@@ -50,6 +57,7 @@ class AnalogRetrievalEngine:
         phase_weight: float = 0.15,
         cycle_weight: float = 0.15,
         mechanism_weight: float = 0.1,
+        same_event_similarity_threshold: float = 0.85,
     ) -> None:
         self.embedding_generator = embedding_generator or EmbeddingGenerator()
         self.vector_weight = vector_weight
@@ -57,6 +65,9 @@ class AnalogRetrievalEngine:
         self.phase_weight = phase_weight
         self.cycle_weight = cycle_weight
         self.mechanism_weight = mechanism_weight
+        # Surface-similarity floor for the interim same-event heuristic
+        # (T6); mirrors ExtractionPipelineConfig.similarity_threshold.
+        self.same_event_similarity_threshold = same_event_similarity_threshold
         self.logger = structlog.get_logger()
 
     async def retrieve_analogs(
@@ -137,16 +148,129 @@ class AnalogRetrievalEngine:
 
             scored_analogs.append(analog)
 
-        # Step 4: Sort by combined score and return top k
+        # Step 4: Sort by combined score
         scored_analogs.sort(key=lambda x: x.combined_score, reverse=True)
+
+        # Step 5 (T6): collapse duplicate narrations of the same happening
+        # BEFORE the top-k cut, so duplicates neither crowd out distinct
+        # analogs nor count as independent evidence in branch frequencies.
+        deduped = await self._collapse_same_event_duplicates(scored_analogs, session)
 
         self.logger.info(
             "Analog retrieval complete",
-            retrieved=len(scored_analogs[:k]),
-            top_score=scored_analogs[0].combined_score if scored_analogs else 0,
+            retrieved=len(deduped[:k]),
+            collapsed=len(scored_analogs) - len(deduped),
+            top_score=deduped[0].combined_score if deduped else 0,
         )
 
-        return scored_analogs[:k]
+        return deduped[:k]
+
+    async def _collapse_same_event_duplicates(
+        self,
+        analogs: List[RetrievedAnalog],
+        session: AsyncSession,
+    ) -> List[RetrievedAnalog]:
+        """Collapse analogs that narrate the same happening (T6).
+
+        Two signals, both identity-side per Sec 3.3a:
+        1. Attested/inferred SAME_EVENT_AS edges among the candidate set.
+        2. Interim conservative heuristic (until ActorEntity resolution
+           lands): same resolved scope AND same arc_type AND overlapping
+           time spans AND surface similarity above threshold at matching
+           embedding epochs. Any missing input fails the heuristic --
+           absence of evidence is not evidence of identity.
+
+        The highest-scoring member of each connected component survives,
+        carrying the others in duplicate_ids for thesis disclosure.
+        """
+        if len(analogs) < 2:
+            return analogs
+
+        ids = [a.episode.id for a in analogs]
+        parent: Dict[UUID, UUID] = {i: i for i in ids}
+
+        def find(x: UUID) -> UUID:
+            while parent[x] != x:
+                parent[x] = parent[parent[x]]
+                x = parent[x]
+            return x
+
+        def union(a: UUID, b: UUID) -> None:
+            parent[find(a)] = find(b)
+
+        # Signal 1: SAME_EVENT_AS edges within the candidate set.
+        from narrative_engine.storage.orm_models import EpisodeLinkORM
+
+        result = await session.execute(
+            select(
+                EpisodeLinkORM.source_episode_id,
+                EpisodeLinkORM.target_episode_id,
+            ).where(
+                EpisodeLinkORM.edge_kind == EdgeKind.SAME_EVENT_AS.value,
+                EpisodeLinkORM.source_episode_id.in_(ids),
+                EpisodeLinkORM.target_episode_id.in_(ids),
+            )
+        )
+        for source_id, target_id in result.all():
+            union(source_id, target_id)
+
+        # Signal 2: conservative in-set heuristic.
+        for i, a in enumerate(analogs):
+            for b in analogs[i + 1:]:
+                if find(a.episode.id) == find(b.episode.id):
+                    continue
+                if self._same_event_heuristic(a.episode, b.episode):
+                    self.logger.info(
+                        "analog_heuristic_merge",
+                        kept_or_merged=[str(a.episode.id), str(b.episode.id)],
+                        titles=[a.episode.title, b.episode.title],
+                    )
+                    union(a.episode.id, b.episode.id)
+
+        groups: Dict[UUID, List[RetrievedAnalog]] = {}
+        for analog in analogs:
+            groups.setdefault(find(analog.episode.id), []).append(analog)
+
+        deduped: List[RetrievedAnalog] = []
+        for group in groups.values():
+            group.sort(key=lambda x: x.combined_score, reverse=True)
+            representative = group[0]
+            representative.duplicate_ids = [g.episode.id for g in group[1:]]
+            deduped.append(representative)
+
+        deduped.sort(key=lambda x: x.combined_score, reverse=True)
+        return deduped
+
+    def _same_event_heuristic(self, a: Episode, b: Episode) -> bool:
+        """Conservative same-event check: ALL conditions must hold on
+        concrete data. Surface embeddings only (identity signal, Sec 3.3a);
+        near-miss decoys (1907 panic vs 1929 crash: same scope, same arc)
+        are separated by the time-span overlap requirement."""
+        from narrative_engine.scopes import resolve_scope
+
+        if not a.scope_id or not b.scope_id:
+            return False
+        scope_a = resolve_scope(a.scope_id) or a.scope_id
+        scope_b = resolve_scope(b.scope_id) or b.scope_id
+        if scope_a != scope_b:
+            return False
+
+        if not a.arc_type or not b.arc_type or a.arc_type != b.arc_type:
+            return False
+
+        if not (a.start_date and a.end_date and b.start_date and b.end_date):
+            return False
+        if a.start_date > b.end_date or b.start_date > a.end_date:
+            return False
+
+        if a.surface_embedding is None or b.surface_embedding is None:
+            return False
+        if a.surface_embedding_epoch != b.surface_embedding_epoch:
+            return False
+        similarity = self.embedding_generator.similarity(
+            a.surface_embedding, b.surface_embedding
+        )
+        return similarity >= self.same_event_similarity_threshold
 
     async def _score_analog(
         self,

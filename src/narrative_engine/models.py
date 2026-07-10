@@ -2,9 +2,16 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
+
+
+def utcnow() -> datetime:
+    """Timezone-aware UTC now. All persisted timestamps are aware: the DB
+    columns are timestamptz, and naive/aware mixing breaks round-trip
+    equality (T3) besides being deprecated."""
+    return datetime.now(timezone.utc)
 from enum import Enum
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Literal, Optional, Set
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -214,7 +221,7 @@ class CycleMembership(BaseModel):
     link_status: LinkStatus = LinkStatus.ATTESTED
     review_status: ReviewStatus = ReviewStatus.AUTO
 
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
 
 
 class EpisodeLink(BaseModel):
@@ -241,7 +248,7 @@ class EpisodeLink(BaseModel):
     review_status: ReviewStatus = ReviewStatus.AUTO
     reviewed_by: Optional[str] = None
     reviewed_at: Optional[datetime] = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
 
     @model_validator(mode="after")
     def _causal_links_must_be_attested(self) -> "EpisodeLink":
@@ -260,6 +267,26 @@ class Continuation(BaseModel):
     description: str
     probability: float
     supporting_analogs: int = 0
+
+
+class Scope(BaseModel):
+    """A polity/civilization/region/system/dyad that cycle trees and
+    episodes belong to (design doc Sec 4).
+
+    The registry of scopes is versioned data, not ontology (Sec 9): whether
+    "the West" is one scope or "China" spans dynastic breaks are hypotheses
+    someone will revise. Canonical entries live in data/scope_registry.json;
+    see narrative_engine.scopes for alias resolution.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    id: str  # slug: "us", "china", "intl_system"
+    kind: Literal["polity", "civilization", "region", "system", "dyad"]
+    name: str
+    parent_scope_id: Optional[str] = None  # polities nest under civilizations
+    aliases: List[str] = Field(default_factory=list)
+    notes: Optional[str] = None  # where the boundary is contested, say so
 
 
 class Actor(BaseModel):
@@ -339,8 +366,8 @@ class Episode(BaseModel):
     extracted_from: List[str] = Field(default_factory=list)  # chunk IDs
 
     # Metadata
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
     version: int = 1
 
     # Cycle membership
@@ -353,6 +380,13 @@ class Episode(BaseModel):
     #   ("same shape?"), consumed by analog retrieval and discovery clustering.
     surface_embedding: Optional[List[float]] = None
     structural_embedding: Optional[List[float]] = None
+
+    # Which (render template, embedding model) produced each vector (T4).
+    # Vectors from different epochs live in different similarity spaces:
+    # retrieval filters to the current epoch; composition treats a mismatch
+    # as a missing signal. None whenever the vector is None.
+    surface_embedding_epoch: Optional[str] = None
+    structural_embedding_epoch: Optional[str] = None
 
     def __hash__(self) -> int:
         return hash(self.id)
@@ -447,8 +481,8 @@ class Cycle(BaseModel):
     is_arc_instance: bool = False
 
     # Metadata
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
 
     def get_depth(self) -> int:
         """Return depth in cycle hierarchy (root = 0)."""
@@ -501,8 +535,12 @@ class Thesis(BaseModel):
     # the classification floor -- no phase, so no phase-completion forecast.
     mode: ThesisMode = ThesisMode.ARC_BASED
 
+    # Which scope-registry version was in effect at generation (Sec 4;
+    # scope boundaries are versioned hypotheses, Sec 9).
+    scope_registry_version: Optional[str] = None
+
     # Metadata
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
     model_version: str  # Model used (algorithm or LLM)
     taxonomy_version: str  # Arc taxonomy version
 
@@ -521,7 +559,7 @@ class ExtractionRecord(BaseModel):
     confidence: Optional[float] = None
 
     processing_time_ms: Optional[int] = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
 
     # For audit trail
     error_message: Optional[str] = None

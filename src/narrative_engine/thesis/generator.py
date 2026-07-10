@@ -10,6 +10,7 @@ from uuid import uuid4
 import structlog
 
 from narrative_engine.extraction.config import CURRENT_TAXONOMY_VERSION
+from narrative_engine.scopes import scope_registry_version
 from narrative_engine.models import (
     ClassificationState,
     Continuation,
@@ -17,6 +18,7 @@ from narrative_engine.models import (
     Thesis,
     ThesisConfidence,
     ThesisMode,
+    utcnow,
 )
 from narrative_engine.retrieval.analog_retrieval import RetrievedAnalog
 
@@ -55,10 +57,15 @@ class ThesisGenerator:
         min_analogs: int = 3,
         max_analogs: int = 10,
         confidence_threshold: float = 0.6,
+        max_per_source: int = 3,
     ) -> None:
         self.min_analogs = min_analogs
         self.max_analogs = max_analogs
         self.confidence_threshold = confidence_threshold
+        # Defense-in-depth against single-book narrative dominance (T6):
+        # even when identity resolution misses duplicates, one source can't
+        # supply more than this many analogs to a thesis.
+        self.max_per_source = max_per_source
         self.logger = structlog.get_logger()
 
     def generate(
@@ -122,6 +129,16 @@ class ThesisGenerator:
                 "structural similarity only, with no phase-completion statistics",
             )
 
+        # Dedup disclosure (T6): if retrieval collapsed duplicate narrations
+        # of the same happening, say so -- branch frequencies are counts,
+        # and the reader must know what was and wasn't counted.
+        collapsed_narrations = sum(len(a.duplicate_ids) for a in filtered)
+        if collapsed_narrations:
+            uncertainties.append(
+                f"{collapsed_narrations} duplicate narration(s) of the same "
+                "underlying events were collapsed before counting analog frequencies"
+            )
+
         # Generate narrative synthesis (optional LLM enhancement)
         narrative = self._generate_narrative(
             query_episode,
@@ -134,7 +151,7 @@ class ThesisGenerator:
         thesis = Thesis(
             id=uuid4(),
             query=self._formulate_query(query_episode),
-            query_date=datetime.utcnow(),
+            query_date=utcnow(),
             analog_episode_ids=[e.analog.episode.id for e in evidence],
             analog_similarity_scores=[e.analog.combined_score for e in evidence],
             dominant_continuation=continuations[0] if continuations else None,
@@ -145,6 +162,7 @@ class ThesisGenerator:
             mode=mode,
             model_version="thesis-v1.0",
             taxonomy_version=CURRENT_TAXONOMY_VERSION,
+            scope_registry_version=scope_registry_version(),
             narrative_synthesis=narrative,
         )
 
@@ -182,7 +200,24 @@ class ThesisGenerator:
         # Sort by combined score
         filtered.sort(key=lambda x: x.combined_score, reverse=True)
 
-        return filtered[: self.max_analogs]
+        # Per-source cap (T6): branch frequencies are counts over analogs,
+        # so one heavily-narrated source must not dominate them. Episodes
+        # without provenance are uncapped (nothing to cap on).
+        capped: List[RetrievedAnalog] = []
+        per_source: Dict[str, int] = {}
+        for analog in filtered:
+            source = (
+                analog.episode.extracted_from[0]
+                if analog.episode.extracted_from
+                else None
+            )
+            if source is not None:
+                if per_source.get(source, 0) >= self.max_per_source:
+                    continue
+                per_source[source] = per_source.get(source, 0) + 1
+            capped.append(analog)
+
+        return capped[: self.max_analogs]
 
     def _extract_evidence(
         self,
@@ -466,7 +501,7 @@ class ThesisGenerator:
         return Thesis(
             id=uuid4(),
             query=self._formulate_query(query_episode),
-            query_date=datetime.utcnow(),
+            query_date=utcnow(),
             analog_episode_ids=[a.episode.id for a in analogs],
             analog_similarity_scores=[a.combined_score for a in analogs],
             dominant_continuation=None,
@@ -477,5 +512,6 @@ class ThesisGenerator:
             mode=mode,
             model_version="thesis-v1.0",
             taxonomy_version=CURRENT_TAXONOMY_VERSION,
+            scope_registry_version=scope_registry_version(),
             narrative_synthesis=None,
         )

@@ -1,0 +1,30 @@
+{
+  "version": "scope-v0.1.0",
+  "_comment": "Versioned scope registry (T5, design doc Sec 4/Sec 9). Scope boundaries are contested claims: entries are hypotheses, not ontology. Bump `version` on any change; unresolved raw strings logged by the resolver are the promotion queue for new aliases.",
+  "scopes": [
+    {"id": "intl_system", "kind": "system", "name": "International System", "aliases": ["INTL_SYSTEM", "international system", "world system", "global order", "international order"]},
+    {"id": "western", "kind": "civilization", "name": "Western Civilization", "aliases": ["the West", "Western Europe", "Western world"]},
+    {"id": "sinosphere", "kind": "civilization", "name": "Sinosphere", "aliases": ["East Asia", "Sinic civilization"]},
+    {"id": "hellenic", "kind": "civilization", "name": "Hellenic Civilization", "aliases": ["Hellas", "Ancient Greece", "Greece", "Greek world"]},
+    {"id": "us", "kind": "polity", "name": "United States", "parent_scope_id": "western", "aliases": ["USA", "U.S.", "U.S.A.", "US", "America", "United States of America", "the Union"]},
+    {"id": "uk", "kind": "polity", "name": "United Kingdom", "parent_scope_id": "western", "aliases": ["Britain", "Great Britain", "England", "British Empire"], "notes": "England-as-UK is contested pre-1707; acceptable at spike scale."},
+    {"id": "france", "kind": "polity", "name": "France", "parent_scope_id": "western", "aliases": ["French Republic", "French Empire", "Bourbon France", "Vichy France"]},
+    {"id": "germany", "kind": "polity", "name": "Germany", "parent_scope_id": "western", "aliases": ["German Empire", "Wilhelmine Germany", "Weimar Germany", "Nazi Germany", "Third Reich", "West Germany", "Prussia"], "notes": "Prussia-as-Germany is contested pre-1871; registry treats German polity continuity as one scope (Sec 9 hypothesis)."},
+    {"id": "austria_hungary", "kind": "polity", "name": "Austria-Hungary", "parent_scope_id": "western", "aliases": ["Austria", "Habsburg Empire", "Habsburg Monarchy", "Austro-Hungarian Empire"]},
+    {"id": "russia", "kind": "polity", "name": "Russia", "aliases": ["Russian Empire", "Soviet Union", "USSR", "Muscovy", "Russian Federation"], "notes": "Deliberately no civilization parent: Russia-as-Western is contested."},
+    {"id": "china", "kind": "polity", "name": "China", "parent_scope_id": "sinosphere", "aliases": ["Ming", "Qing", "Ming China", "Qing China", "PRC", "People's Republic of China", "Middle Kingdom", "Imperial China"], "notes": "Spans dynastic breaks per the design doc's default hypothesis (Sec 9)."},
+    {"id": "japan", "kind": "polity", "name": "Japan", "parent_scope_id": "sinosphere", "aliases": ["Imperial Japan", "Tokugawa Japan", "Meiji Japan"]},
+    {"id": "netherlands", "kind": "polity", "name": "Netherlands", "parent_scope_id": "western", "aliases": ["Holland", "Dutch Republic", "United Provinces"]},
+    {"id": "spain", "kind": "polity", "name": "Spain", "parent_scope_id": "western", "aliases": ["Spanish Empire", "Habsburg Spain", "Castile"]},
+    {"id": "italy", "kind": "polity", "name": "Italy", "parent_scope_id": "western", "aliases": ["Italian Republic", "Kingdom of Italy"]},
+    {"id": "ottoman", "kind": "polity", "name": "Ottoman Empire", "aliases": ["Ottomans", "Sublime Porte", "Turkey"], "notes": "Turkey alias is contested post-1923."},
+    {"id": "rome", "kind": "polity", "name": "Rome", "aliases": ["Roman Republic", "Roman Empire", "Ancient Rome"]},
+    {"id": "byzantium", "kind": "polity", "name": "Byzantium", "aliases": ["Byzantine Empire", "Eastern Roman Empire"]},
+    {"id": "athens", "kind": "polity", "name": "Athens", "parent_scope_id": "hellenic", "aliases": ["Athenian Empire", "Delian League"]},
+    {"id": "sparta", "kind": "polity", "name": "Sparta", "parent_scope_id": "hellenic", "aliases": ["Lacedaemon", "Peloponnesian League"]},
+    {"id": "persia", "kind": "polity", "name": "Persia", "aliases": ["Iran", "Achaemenid Empire", "Safavid Persia", "Persian Empire"]},
+    {"id": "us_china", "kind": "dyad", "name": "US-China", "aliases": ["US-China dyad", "Sino-American", "United States-China"]},
+    {"id": "uk_germany", "kind": "dyad", "name": "UK-Germany", "aliases": ["Anglo-German", "Britain-Germany"]},
+    {"id": "athens_sparta", "kind": "dyad", "name": "Athens-Sparta", "aliases": ["Athens-Sparta dyad", "Peloponnesian rivalry"]}
+  ]
+}

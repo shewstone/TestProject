@@ -211,6 +211,9 @@ class ArcIdentityResolver:
         surface_concrete = (
             episode_a.surface_embedding is not None
             and episode_b.surface_embedding is not None
+            # Epoch mismatch (T4) = incomparable vectors = missing signal;
+            # it must not count toward the evidence floor.
+            and episode_a.surface_embedding_epoch == episode_b.surface_embedding_epoch
         )
         phase_concrete = bool(episode_a.arc_phase and episode_b.arc_phase)
         evidence_signals = sum(
@@ -342,6 +345,13 @@ class ArcIdentityResolver:
 
         if a_surface is None or b_surface is None:
             return 0.5  # Neutral if no surface embeddings
+
+        # Epoch check (T4): vectors from different embedding epochs live in
+        # different similarity spaces; comparing them yields a meaningless
+        # number. Treat exactly like a missing signal (neutral score, and
+        # _surface_signal_concrete excludes it from the evidence floor).
+        if a.surface_embedding_epoch != b.surface_embedding_epoch:
+            return 0.5
         
         # Cosine similarity
         import numpy as np

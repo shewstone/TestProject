@@ -18,6 +18,7 @@ from narrative_engine.models import (
     ClassificationState,
     Episode,
     MechanismTag,
+    utcnow,
 )
 from narrative_engine.storage.repositories import (
     RepositoryFactory,
@@ -40,7 +41,7 @@ class PipelineResult:
         self.episodes = episodes
         self.processing_time_ms = processing_time_ms
         self.errors = errors
-        self.created_at = datetime.utcnow()
+        self.created_at = utcnow()
 
 
 class ExtractionOrchestrator:

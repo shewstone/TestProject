@@ -9,7 +9,7 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from narrative_engine.models import ArcPhase, ArcType
+from narrative_engine.models import ArcPhase, ArcType, utcnow
 
 
 class CompositionStatus(str, Enum):
@@ -85,8 +85,8 @@ class ArcInstance(BaseModel):
     coverage_gaps: List[str] = Field(default_factory=list)  # List of missing phases
 
     # Metadata
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
 
     # Framework lineage
     framework_id: Optional[UUID] = None  # If imported from a framework

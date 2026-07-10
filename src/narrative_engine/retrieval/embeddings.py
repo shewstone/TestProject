@@ -8,6 +8,7 @@ import structlog
 from sentence_transformers import SentenceTransformer
 
 from narrative_engine.models import Episode
+from narrative_engine.retrieval.epochs import EMBEDDING_MODEL_NAME
 
 logger = structlog.get_logger()
 
@@ -15,8 +16,9 @@ logger = structlog.get_logger()
 class EmbeddingGenerator:
     """Generate vector embeddings for episodes using sentence-transformers."""
 
-    # Default model: good balance of quality and speed
-    DEFAULT_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+    # Pinned model (Sec 6.3); single source of truth lives in epochs.py so
+    # epoch identifiers can't drift from the model actually used.
+    DEFAULT_MODEL = EMBEDDING_MODEL_NAME
 
     def __init__(self, model_name: Optional[str] = None) -> None:
         self.model_name = model_name or self.DEFAULT_MODEL

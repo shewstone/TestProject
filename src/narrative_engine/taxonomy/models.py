@@ -7,6 +7,8 @@ with soft membership and taxonomy versioning for experimentation.
 from __future__ import annotations
 
 from datetime import datetime
+
+from narrative_engine.models import utcnow
 from enum import Enum
 from typing import Any, Dict, List, Optional
 from uuid import UUID, uuid4
@@ -52,8 +54,8 @@ class ArcTaxonomy(BaseModel):
     parent_taxonomy_id: Optional[UUID] = None  # For tracking lineage
 
     # Metadata
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
     created_by: Optional[str] = None  # user or system
 
     # For discovered taxonomies: clustering parameters used
@@ -63,12 +65,12 @@ class ArcTaxonomy(BaseModel):
     def activate(self) -> None:
         """Mark this taxonomy as active."""
         self.status = TaxonomyStatus.ACTIVE
-        self.updated_at = datetime.utcnow()
+        self.updated_at = utcnow()
 
     def deprecate(self) -> None:
         """Mark this taxonomy as deprecated."""
         self.status = TaxonomyStatus.DEPRECATED
-        self.updated_at = datetime.utcnow()
+        self.updated_at = utcnow()
 
 
 class CanonicalArc(BaseModel):
@@ -101,8 +103,8 @@ class CanonicalArc(BaseModel):
     taxonomy_ids: List[UUID] = Field(default_factory=list)
 
     # Metadata
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
 
     def __hash__(self) -> int:
         return hash(self.id)
@@ -146,7 +148,7 @@ class DiscoveredArc(BaseModel):
     taxonomy_ids: List[UUID] = Field(default_factory=list)
 
     # Discovery metadata
-    discovered_at: datetime = Field(default_factory=datetime.utcnow)
+    discovered_at: datetime = Field(default_factory=utcnow)
     discovery_algorithm: Optional[str] = None
     discovery_params: Dict[str, Any] = Field(default_factory=dict)
 
@@ -187,7 +189,7 @@ class ArcMembership(BaseModel):
 
     # Versioning
     taxonomy_id: UUID
-    assigned_at: datetime = Field(default_factory=datetime.utcnow)
+    assigned_at: datetime = Field(default_factory=utcnow)
     assigned_by: Optional[str] = None  # user, model name, or algorithm
 
     def __hash__(self) -> int:
@@ -220,5 +222,5 @@ class ArcComparison(BaseModel):
     retrieval_recall: Optional[float] = None
     thesis_accuracy: Optional[float] = None
 
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
     evaluated_by: Optional[str] = None

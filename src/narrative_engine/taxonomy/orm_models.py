@@ -11,6 +11,7 @@ from sqlalchemy import JSON, Column, DateTime, Enum, Float, ForeignKey, String, 
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from narrative_engine.models import utcnow
 from narrative_engine.storage.database import Base
 from narrative_engine.taxonomy.models import TaxonomyStatus, TaxonomyType
 
@@ -40,7 +41,7 @@ episode_arc_membership = Table(
     Column("rationale", Text, nullable=True),
     Column("distance_to_centroid", Float, nullable=True),
     Column("taxonomy_id", UUID(as_uuid=True), ForeignKey("taxonomies.id"), nullable=False),
-    Column("assigned_at", DateTime, default=datetime.utcnow),
+    Column("assigned_at", DateTime, default=utcnow),
     Column("assigned_by", String(255), nullable=True),
 )
 
@@ -68,9 +69,9 @@ class ArcTaxonomyORM(Base):
         UUID(as_uuid=True), ForeignKey("taxonomies.id"), nullable=True
     )
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime, default=utcnow, onupdate=utcnow
     )
     created_by: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
@@ -140,9 +141,9 @@ class ArcORM(Base):
     discovery_params: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
 
     # Common metadata
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime, default=utcnow, onupdate=utcnow
     )
 
     # Relationships
@@ -181,5 +182,5 @@ class ArcComparisonORM(Base):
     retrieval_recall: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     thesis_accuracy: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     evaluated_by: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)

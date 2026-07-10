@@ -24,7 +24,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from narrative_engine.models import ArcPhase, ArcType, CycleScale
+from narrative_engine.models import ArcPhase, ArcType, CycleScale, utcnow
 from narrative_engine.storage.database import Base
 
 # Association table for many-to-many relationships
@@ -78,7 +78,7 @@ class CycleMembershipORM(Base):
     review_status: Mapped[str] = mapped_column(String(50), default="auto")
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow, nullable=False
+        DateTime(timezone=True), default=utcnow, nullable=False
     )
 
     __table_args__ = (
@@ -119,7 +119,7 @@ class EpisodeLinkORM(Base):
     reviewed_by: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow, nullable=False
+        DateTime(timezone=True), default=utcnow, nullable=False
     )
 
     __table_args__ = (
@@ -128,6 +128,27 @@ class EpisodeLinkORM(Base):
 
     def __repr__(self) -> str:
         return f"<EpisodeLinkORM(edge_kind={self.edge_kind}, {self.source_episode_id}->{self.target_episode_id})>"
+
+
+class ScopeORM(Base):
+    """ORM model for Scope (T5): mirror of the packaged scope registry so
+    scope ids are queryable/joinable in SQL. narrative_engine.scopes is the
+    resolution source of truth; ScopeRepository.sync_from_registry keeps
+    this table matching the packaged JSON."""
+
+    __tablename__ = "scopes"
+
+    id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    parent_scope_id: Mapped[Optional[str]] = mapped_column(
+        String(100), ForeignKey("scopes.id", ondelete="SET NULL"), nullable=True
+    )
+    aliases: Mapped[list] = mapped_column(JSON, default=list)
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    def __repr__(self) -> str:
+        return f"<ScopeORM(id={self.id}, kind={self.kind})>"
 
 
 class ActorORM(Base):
@@ -235,13 +256,13 @@ class EpisodeORM(Base):
     # Metadata
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=datetime.utcnow,
+        default=utcnow,
         nullable=False,
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=utcnow,
+        onupdate=utcnow,
         nullable=False,
     )
     version: Mapped[int] = mapped_column(Integer, default=1)
@@ -280,6 +301,13 @@ class EpisodeORM(Base):
         Vector(384),
         nullable=True,
     )
+
+    # Embedding epochs (T4): which (render template, embedding model)
+    # produced each vector. Retrieval filters structural search to the
+    # current epoch so stale vectors are invisible rather than silently
+    # compared across incompatible similarity spaces.
+    surface_embedding_epoch: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    structural_embedding_epoch: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
 
     # Indexes
     __table_args__ = (
@@ -332,13 +360,13 @@ class CycleORM(Base):
     # Metadata
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=datetime.utcnow,
+        default=utcnow,
         nullable=False,
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=utcnow,
+        onupdate=utcnow,
         nullable=False,
     )
 
@@ -389,7 +417,11 @@ class ThesisORM(Base):
     # produce a dominant continuation at all.
     dominant_continuation: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     alternative_continuations: Mapped[list] = mapped_column(JSON, default=list)
+    # models.ThesisConfidence values; plain string like classification_state
+    confidence: Mapped[str] = mapped_column(String(20), default="unknown", nullable=False)
     watch_for_indicators: Mapped[list] = mapped_column(JSON, default=list)
+    key_uncertainties: Mapped[list] = mapped_column(JSON, default=list)
+    narrative_synthesis: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     confidence_interval: Mapped[Optional[tuple]] = mapped_column(JSON, nullable=True)
     estimated_duration: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     resolution_criteria: Mapped[list] = mapped_column(JSON, default=list)
@@ -410,10 +442,13 @@ class ThesisORM(Base):
     # structural similarity.
     mode: Mapped[str] = mapped_column(String(20), default="arc_based", nullable=False)
 
+    # Scope-registry version in effect at generation (T5; Sec 4).
+    scope_registry_version: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+
     # Metadata
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=datetime.utcnow,
+        default=utcnow,
         nullable=False,
     )
     model_version: Mapped[str] = mapped_column(String(100), nullable=False)
@@ -448,7 +483,7 @@ class ExtractionRecordORM(Base):
     processing_time_ms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=datetime.utcnow,
+        default=utcnow,
         nullable=False,
     )
 

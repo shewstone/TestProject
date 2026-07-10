@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+
+from narrative_engine.models import utcnow
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -71,7 +73,7 @@ class SourceMetadata:
 
     def __post_init__(self):
         if self.ingested_at is None:
-            self.ingested_at = datetime.utcnow()
+            self.ingested_at = utcnow()
 
 
 @dataclass
@@ -108,7 +110,7 @@ class ParsedDocument:
 
     def __post_init__(self):
         if self.parsed_at is None:
-            self.parsed_at = datetime.utcnow()
+            self.parsed_at = utcnow()
 
     def get_text_by_structure(self) -> List[tuple[str, str, int]]:
         """Extract (element_type, title, content) tuples from structure."""
@@ -188,4 +190,4 @@ class IngestionResult:
         if self.warnings is None:
             self.warnings = []
         if self.processed_at is None:
-            self.processed_at = datetime.utcnow()
+            self.processed_at = utcnow()
