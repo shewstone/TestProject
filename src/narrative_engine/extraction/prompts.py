@@ -9,10 +9,17 @@ from narrative_engine.extraction.config import DEFAULT_ARC_TAXONOMY, MECHANISM_D
 # Prompt versions for tracking
 PROMPT_VERSIONS = {
     "segmentation": "1.0.0",
-    "extraction": "1.0.0",
+    "extraction": "1.1.0",  # 1.1.0: controlled role vocabulary (T2)
     "classification": "1.0.0",
     "linking": "1.0.0",
 }
+
+
+def _role_vocabulary_block() -> str:
+    """Serialized controlled role vocabulary for the extraction prompt."""
+    from narrative_engine.extraction.roles import ActorRole
+
+    return ", ".join(role.value for role in ActorRole)
 
 
 def get_segmentation_prompt(text: str) -> str:
@@ -67,7 +74,16 @@ def get_extraction_prompt(segment_text: str, segment_summary: str) -> str:
 
 3. **actors** (array): List of significant actors with:
    - name: Actor name
-   - role: Their role (e.g., "protagonist", "antagonist", "institution", "nation")
+   - role: Their role in this episode, in your own words (free text)
+   - canonical_role: The best-fitting STRUCTURAL position from this controlled
+     vocabulary (or null if none genuinely fits — do not force a choice):
+     {_role_vocabulary_block()}
+     Roles name structural positions, not costumes: a "court" is any power
+     center where proximity to a principal outweighs formal office (an
+     administration's inner circle, a founder-CEO's kitchen cabinet, a
+     politburo). Roles can be filled by COLLECTIVE actors — an investor
+     syndicate can be a kingmaker, a movement can be a pretender.
+   - role_fit_confidence: 0.0-1.0, how well the canonical_role fits
 
 4. **setting** (object):
    - location: Where it took place

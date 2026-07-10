@@ -32,6 +32,7 @@ async def _real_pipeline(episodes):
     return compose_arc_instances_from_episodes(episodes, arc_type=episodes[0].arc_type)
 
 
+@pytest.mark.fixture_gate
 class TestCompositionFixture:
     def test_positive_cases_recover_as_single_instance(self):
         fixture = CompositionFixture()

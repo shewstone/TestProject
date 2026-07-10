@@ -136,6 +136,7 @@ markers = [
     "unit: Unit tests (fast, isolated)",
     "integration: Integration tests (slower, requires external services)",
     "slow: Slow tests that should be run separately",
+    "fixture_gate: Regression gates on the analog/composition fixtures; failure blocks embedding/render/pipeline upgrades (design doc Sec 6.3, 6.6)",
 ]
 
 [tool.coverage.run]

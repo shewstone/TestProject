@@ -5,14 +5,14 @@ Organizing principle: the design's own "everything must pay rent" ethos (§3.6, 
 — build the rent-collection apparatus, protect the signals it measures, and
 drift-proof the substrate.
 
-| # | Title | Priority | Effort | Depends on |
-|---|-------|----------|--------|------------|
-| [T1](T1-eval-fixtures-and-ci-gates.md) | Eval fixtures + CI gates (analog fixture, composition fixture, masked-ending loop) | P0 | L | T4 |
-| [T2](T2-structural-render-hardening.md) | Structural render hardening (role vocab, proper-noun scrub, residue metric) | P1 | M | T1, T4, T5 |
-| [T3](T3-model-orm-roundtrip-tests.md) | Model↔ORM round-trip tests (drift-as-a-class fix) | P0 | S | — |
-| [T4](T4-embedding-render-versioning.md) | Embedding/render epoch versioning + re-embed job | P0 | M | — |
-| [T5](T5-scope-registry.md) | Scope registry + alias resolver | P1 | M | — |
-| [T6](T6-analog-dedup.md) | Analog dedup at retrieval (counts, not vibes) | P1 | S–M | — |
+| # | Title | Priority | Effort | Depends on | Status |
+|---|-------|----------|--------|------------|--------|
+| [T1](T1-eval-fixtures-and-ci-gates.md) | Eval fixtures + CI gates (analog fixture, composition fixture, masked-ending loop) | P0 | L | T4 | ✅ Done 2026-07-10 — baseline pair_recall@5 = 0.900, MRR = 0.777; floor 0.85 |
+| [T2](T2-structural-render-hardening.md) | Structural render hardening (role vocab, proper-noun scrub, residue metric) | P1 | M | T1, T4, T5 | ✅ Done 2026-07-10 — render-v0.8.0 |
+| [T3](T3-model-orm-roundtrip-tests.md) | Model↔ORM round-trip tests (drift-as-a-class fix) | P0 | S | — | ✅ Done 2026-07-10 — caught 4 more silent-drop bugs while landing |
+| [T4](T4-embedding-render-versioning.md) | Embedding/render epoch versioning + re-embed job | P0 | M | — | ✅ Done 2026-07-10 |
+| [T5](T5-scope-registry.md) | Scope registry + alias resolver | P1 | M | — | ✅ Done 2026-07-10 — scope-v0.1.0, 24 scopes |
+| [T6](T6-analog-dedup.md) | Analog dedup at retrieval (counts, not vibes) | P1 | S–M | — | ✅ Done 2026-07-10 |
 
 **Recommended execution order:** T3 → T4 → T5 → T6 → T2 → T1.
 T3/T4 first because they protect everything that follows; T5/T6 are independent

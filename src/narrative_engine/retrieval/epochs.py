@@ -14,9 +14,11 @@ constants without pulling in sentence-transformers.
 from typing import Literal
 
 # Bumped whenever render_structural_template's output changes for the same
-# input (Sec 6.2 stage 3: deterministic render, versioned). v0.7.0 = the
-# outcome-free render (resolution/consequences excluded).
-CURRENT_RENDER_VERSION = "render-v0.7.0"
+# input (Sec 6.2 stage 3: deterministic render, versioned).
+# v0.7.0 = outcome-free render (resolution/consequences excluded).
+# v0.8.0 = controlled-role tokens + proper-noun/date scrub (T2): free-text
+#          roles and identity markers no longer reach the analogy signal.
+CURRENT_RENDER_VERSION = "render-v0.8.0"
 
 # The pinned sentence-transformers model (Sec 6.3). Single source of truth:
 # EmbeddingGenerator.DEFAULT_MODEL is derived from this.

@@ -86,13 +86,19 @@ class EmbeddingGenerator:
             lines.append(f"Phase: {episode.arc_phase.value}")
 
         if episode.actors:
-            # Controlled-vocabulary roles only, deduped and order-preserved.
+            # Controlled-vocabulary tokens ONLY (T2): canonical_role where
+            # the fit floor was cleared, one shared unresolved token where it
+            # wasn't. The free-text role is prose ("President", "J.P.
+            # Morgan's bank") and must never reach the analogy signal.
+            from narrative_engine.extraction.roles import UNRESOLVED_ACTOR_TOKEN
+
             seen = set()
             roles = []
             for actor in episode.actors:
-                if actor.role not in seen:
-                    seen.add(actor.role)
-                    roles.append(actor.role)
+                token = actor.canonical_role or UNRESOLVED_ACTOR_TOKEN
+                if token not in seen:
+                    seen.add(token)
+                    roles.append(token)
             lines.append(f"Actor roles: {', '.join(roles)}")
 
         if episode.mechanism_tags:
@@ -102,18 +108,92 @@ class EmbeddingGenerator:
                 f"Mechanisms: {', '.join(tag.value for tag in episode.mechanism_tags)}"
             )
 
+        scrub = self._identity_scrubber(episode)
+
         if episode.initiating_conditions:
             lines.append("Initiating conditions:")
-            lines.extend(f"- {c}" for c in episode.initiating_conditions)
+            lines.extend(f"- {scrub(c)}" for c in episode.initiating_conditions)
 
         if episode.escalation_mechanics:
             lines.append("Escalation mechanics:")
-            lines.extend(f"- {m}" for m in episode.escalation_mechanics)
+            lines.extend(f"- {scrub(m)}" for m in episode.escalation_mechanics)
 
         if episode.tension:
-            lines.append(f"Tension: {episode.tension}")
+            lines.append(f"Tension: {scrub(episode.tension)}")
 
         return "\n".join(lines)
+
+    def _identity_scrubber(self, episode: Episode):
+        """Build a deterministic scrub function for this episode's free-text
+        lines (T2): actor names -> their role token, the episode's
+        place/scope names -> <PLACE>, years and month names -> <DATE>.
+
+        The render is deterministic code, not an LLM (Sec 6.2 stage 3), so
+        the place/date-blind guarantee is enforced HERE, not hoped for in
+        the extraction prompt. Replacement, not deletion: a resolved actor
+        mention keeps its structural meaning under its role token.
+        """
+        import re
+
+        from narrative_engine.extraction.roles import UNRESOLVED_ACTOR_TOKEN
+
+        replacements: List[tuple] = []
+
+        for actor in episode.actors:
+            if actor.name:
+                token = actor.canonical_role or UNRESOLVED_ACTOR_TOKEN
+                replacements.append((actor.name, token))
+
+        place_names: List[str] = []
+        if episode.location:
+            place_names.append(episode.location)
+        if episode.scope_id:
+            from narrative_engine.scopes import get_registry, resolve_scope
+
+            scope_id = resolve_scope(episode.scope_id) or None
+            scope = get_registry().get(scope_id) if scope_id else None
+            place_names.append(episode.scope_id)
+            if scope:
+                place_names.extend([scope.name, *scope.aliases])
+        for place in place_names:
+            replacements.append((place, "<PLACE>"))
+
+        # Longest-first so "United States of America" wins over "America".
+        # Lookaround word anchors, not \b: aliases like "U.S." end in
+        # punctuation where \b would fail, and unanchored matching rewrites
+        # substrings ("us" inside "Trust").
+        replacements.sort(key=lambda pair: len(pair[0]), reverse=True)
+
+        def _compile(source: str, target: str):
+            # Place replacements absorb a preceding article so "the United
+            # States" and "Austria-Hungary" both normalize to bare <PLACE> --
+            # article variance is identity residue too.
+            article = r"(?:the\s+)?" if target == "<PLACE>" else ""
+            return re.compile(
+                rf"(?<!\w){article}{re.escape(source)}(?!\w)", re.IGNORECASE
+            )
+
+        compiled = [
+            (_compile(source, target), target)
+            for source, target in replacements
+            if source
+        ]
+
+        year_pattern = re.compile(r"\b(1[0-9]{3}|20[0-9]{2})s?\b")
+        month_pattern = re.compile(
+            r"\b(January|February|March|April|May|June|July|August|"
+            r"September|October|November|December)\b",
+            re.IGNORECASE,
+        )
+
+        def scrub(text: str) -> str:
+            for pattern, target in compiled:
+                text = pattern.sub(target, text)
+            text = year_pattern.sub("<DATE>", text)
+            text = month_pattern.sub("<DATE>", text)
+            return text
+
+        return scrub
 
     def generate_structural_embedding(self, episode: Episode) -> List[float]:
         """Generate the structural embedding: analogy signal, NOT identity.

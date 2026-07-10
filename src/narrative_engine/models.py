@@ -296,7 +296,14 @@ class Actor(BaseModel):
 
     id: UUID = Field(default_factory=uuid4)
     name: str
-    role: str  # e.g., "protagonist", "antagonist", "institution"
+    role: str  # raw extraction output, free text -- residue signal (T2)
+    # Controlled-vocabulary structural position (extraction.roles.ActorRole
+    # value) with the classifier's fit confidence. None when no role cleared
+    # the fit floor (tau_role) -- no forced choice, same discipline as
+    # tau_class. Only canonical_role may enter the structural render; the
+    # free-text `role` never does.
+    canonical_role: Optional[str] = None
+    role_fit_confidence: Optional[float] = Field(default=None, ge=0.0, le=1.0)
     attributes: Dict[str, Any] = Field(default_factory=dict)
 
     def __hash__(self) -> int:

@@ -69,6 +69,12 @@ class ExtractionPipelineConfig:
     # (Sec 9) -- too low pollutes the analog base, too high starves it.
     classification_confidence_floor: float = 0.5
 
+    # tau_role (T2; Sec 10.5): same no-forced-choice discipline for actor
+    # roles. Below this fit confidence, canonical_role stays None and the
+    # mention counts as vocabulary residue. UNTUNED HYPOTHESIS, like
+    # tau_class.
+    role_fit_floor: float = 0.5
+
     # Entity resolution settings
     similarity_threshold: float = 0.85  # For same-event detection
 
@@ -91,6 +97,7 @@ class ExtractionPipelineConfig:
             chunk_size_tokens=int(os.getenv(f"{prefix}CHUNK_SIZE", "6000")),
             chunk_overlap_tokens=int(os.getenv(f"{prefix}CHUNK_OVERLAP", "500")),
             classification_confidence_floor=float(os.getenv(f"{prefix}TAU_CLASS", "0.5")),
+            role_fit_floor=float(os.getenv(f"{prefix}TAU_ROLE", "0.5")),
         )
 
 

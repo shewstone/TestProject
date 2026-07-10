@@ -273,6 +273,8 @@ class EpisodeRepository:
                     id=a.id,
                     name=a.name,
                     role=a.role,
+                    canonical_role=a.canonical_role,
+                    role_fit_confidence=a.role_fit_confidence,
                     attributes=dict(a.attributes),
                 )
                 for a in episode.actors
@@ -320,6 +322,8 @@ class EpisodeRepository:
                     id=a.id,
                     name=a.name,
                     role=a.role,
+                    canonical_role=a.canonical_role,
+                    role_fit_confidence=a.role_fit_confidence,
                     attributes=a.attributes,
                 )
                 for a in actors

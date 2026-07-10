@@ -159,6 +159,10 @@ class ActorORM(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[str] = mapped_column(String(100), nullable=False)
+    # Controlled-vocabulary role + fit confidence (T2); NULL = unresolved
+    # (below tau_role), which counts as vocabulary residue (Sec 10.5).
+    canonical_role: Mapped[Optional[str]] = mapped_column(String(60), nullable=True)
+    role_fit_confidence: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     attributes: Mapped[dict] = mapped_column(JSON, default=dict)
 
     # Relationships

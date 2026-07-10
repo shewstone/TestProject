@@ -175,18 +175,34 @@ class ExtractionOrchestrator:
         if setting.get("time_period"):
             episode = await self._parse_dates(episode, setting["time_period"], setting.get("date_precision", "year"))
 
-        # Parse actors
+        # Parse actors. canonical_role passes the tau_role fit floor or stays
+        # None (no forced choice — T2); unknown vocabulary values are treated
+        # as unresolved rather than invented roles entering the render.
         actors_data = extraction_result.get("actors", [])
         episode.actors = [
             Actor(
                 name=a.get("name", "Unknown"),
                 role=a.get("role", "unknown"),
+                canonical_role=self._resolve_canonical_role(a),
+                role_fit_confidence=a.get("role_fit_confidence"),
                 attributes=a.get("attributes", {}),
             )
             for a in actors_data
         ]
 
         return episode
+
+    def _resolve_canonical_role(self, actor_data: Dict[str, Any]) -> Optional[str]:
+        """Apply the tau_role floor to an extracted canonical_role claim."""
+        from narrative_engine.extraction.roles import is_known_role
+
+        candidate = actor_data.get("canonical_role")
+        if not candidate or not is_known_role(candidate):
+            return None
+        confidence = actor_data.get("role_fit_confidence")
+        if confidence is None or confidence < self.config.role_fit_floor:
+            return None
+        return candidate
 
     async def _classify_episode(self, episode: Episode) -> None:
         """Classify arc type and phase for an episode."""

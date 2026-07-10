@@ -82,7 +82,14 @@ def maximal_episode() -> Episode:
         setting_description="Late-1920s New York financial markets",
         scope_id="us",
         actors=[
-            Actor(id=uuid4(), name="Herbert Hoover", role="President", attributes={"party": "R"}),
+            Actor(
+                id=uuid4(),
+                name="Herbert Hoover",
+                role="President",
+                canonical_role="central_authority",
+                role_fit_confidence=0.9,
+                attributes={"party": "R"},
+            ),
             Actor(id=uuid4(), name="J.P. Morgan Jr.", role="Banker", attributes={}),
         ],
         initiating_conditions=["Speculative excess", "Margin buying"],
@@ -198,8 +205,14 @@ class TestEpisodeRoundTrip:
 
         assert fetched is not None
         # Actors come back set-ordered via the association table; compare
-        # order-insensitively, then compare the rest field-by-field.
-        assert sorted(a.id for a in fetched.actors) == sorted(a.id for a in episode.actors)
+        # full dumps order-insensitively, then compare the rest field-by-field.
+        def actor_dumps(episode_model):
+            return sorted(
+                (a.model_dump() for a in episode_model.actors),
+                key=lambda d: str(d["id"]),
+            )
+
+        assert actor_dumps(fetched) == actor_dumps(episode)
         dump_a = episode.model_dump(exclude=EPISODE_FIELDS_EXCLUDED | {"actors"})
         dump_b = fetched.model_dump(exclude=EPISODE_FIELDS_EXCLUDED | {"actors"})
         assert dump_a == dump_b

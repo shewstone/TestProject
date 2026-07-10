@@ -50,3 +50,22 @@ jobs:
         env:
           DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/narrative_engine_test
         run: pytest tests/ -v --tb=short
+
+  fixture-gates:
+    # Regression gates (design doc Sec 6.3, 6.6): the analog fixture blocks
+    # embedding/render upgrades; the composition fixture blocks pipeline
+    # upgrades. A change that degrades either must not merge.
+    name: Fixture Gates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -e ".[dev]" --only-binary :all:
+        timeout-minutes: 15
+      - name: Run fixture gates
+        run: pytest -m fixture_gate -s --no-header -p no:cacheprovider --no-cov

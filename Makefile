@@ -41,6 +41,17 @@ test-coverage:
 	pytest -v --cov=narrative_engine --cov-report=html --cov-report=term-missing
 	@echo "Open htmlcov/index.html for detailed coverage report"
 
+# Fixture regression gates (design doc Sec 6.3/6.6): run before changing
+# the embedding model, render template, or composition pipeline.
+fixture-gates:
+	pytest -m fixture_gate -s --no-cov
+
+reembed:
+	python -m narrative_engine.retrieval.reembed
+
+tune-thresholds:
+	python scripts/tune_thresholds.py
+
 # Linting and formatting
 lint:
 	ruff check src tests
