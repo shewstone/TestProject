@@ -18,36 +18,54 @@ The Narrative Engine treats history as a corpus of stories with recurring arcs. 
 ```
 src/narrative_engine/
 ├── ingestion/        # Text ingestion from books, articles, archives
-├── extraction/       # LLM pipeline: segmentation, classification, linking
+├── extraction/       # LLM pipeline: segmentation, extraction, classification,
+│                     # linking; controlled role vocabulary (roles.py)
 ├── storage/          # Database: SQLAlchemy models, pgvector, repositories
-├── retrieval/        # Analog retrieval: semantic search, graph traversal
-├── generation/       # Thesis synthesis from historical analogs
-└── evaluation/       # Backtesting, calibration, Brier scores
+├── retrieval/        # Analog retrieval, dual embeddings + epoch versioning,
+│                     # re-embed batch job (reembed.py)
+├── composition/      # Arc-instance composition: identity resolution,
+│                     # scope-partitioned merging (design doc Sec 6.2 stage 6)
+├── taxonomy/         # Discovery/promotion scaffolding, role-residue metrics
+├── thesis/           # Thesis synthesis from historical analogs
+├── evaluation/       # Masked-ending harness, baselines, Brier/calibration
+├── scopes.py         # Versioned scope registry + alias resolver
+└── data/             # Versioned data artifacts (scope_registry.json)
 ```
 
 ## Quick Start
 
-### Installation
+### Docker (recommended — this is what CI runs)
+
+```bash
+docker compose up -d db
+# The test suite uses a separate database that compose does not auto-create:
+docker compose exec db psql -U postgres -c "CREATE DATABASE narrative_engine_test"
+
+docker compose run --rm app                     # full test suite
+docker compose run --rm -v ./alembic:/app/alembic app alembic upgrade head
+```
+
+### Local installation
 
 ```bash
 pip install -e ".[dev]"
-```
-
-### Database Setup
-
-```bash
-# Create PostgreSQL database with pgvector
 createdb narrative_engine
-
-# Run migrations
 alembic upgrade head
-```
-
-### Running Tests
-
-```bash
 pytest -v
 ```
+
+### Fixture gates (run before changing embeddings, the render, or composition)
+
+```bash
+make fixture-gates    # analog fixture (Sec 6.3) + composition fixture (Sec 6.6)
+make tune-thresholds  # justify per-scale temporal thresholds against the fixture
+make reembed          # bring stale-epoch embeddings to the current epoch
+```
+
+The analog gate's baseline (2026-07-10, render-v0.8.0 + all-MiniLM-L6-v2):
+pair_recall@5 = 0.900, MRR = 0.777 over 30 cross-era pairs + 30 distractors.
+The floor (0.85) is a ratchet: raise it when the render improves, never lower
+it to make a change pass.
 
 ### Example Usage
 
@@ -165,7 +183,12 @@ Episode(
         "Banking crisis follows",
         "New Deal reforms enacted",
     ],
-    embedding=[0.23, -0.15, 0.88, ...],  # 384-dim vector
+    # Dual embeddings, never swapped (design doc Sec 3.3a): surface = identity
+    # ("same happening?"), structural = analogy ("same shape?"). Each carries
+    # the (render, model) epoch that produced it; retrieval only compares
+    # vectors from the current epoch.
+    surface_embedding=[...],      # 384-dim, epoch-stamped
+    structural_embedding=[...],   # 384-dim, epoch-stamped
 )
 ```
 
@@ -220,27 +243,29 @@ Based on 12 historical analogs:
 
 ### Evaluation & Backtesting
 
-Track forecast accuracy over time:
+The masked-ending harness (design doc Sec 6.6) runs the whole loop —
+snapshot the corpus at a cutoff year with outcomes masked at the data
+layer, retrieve analogs, generate theses, score against the known
+continuations, and compare against the persistence baseline:
 
 ```python
-from narrative_engine.evaluation.backtest import BacktestEngine
-from narrative_engine.evaluation.metrics import BrierScore
+from datetime import datetime, timezone
+from narrative_engine.evaluation.harness import run_backtest
 
-# Run backtest on historical events
-engine = BacktestEngine()
-results = await engine.backtest(
-    start_date="2000-01-01",
-    end_date="2020-01-01",
+report = await run_backtest(
+    session,
+    corpus,                                    # unmasked; harness masks it
+    cutoff=datetime(1930, 1, 1, tzinfo=timezone.utc),
 )
-
-# Score predictions
-for thesis in results:
-    score = BrierScore.calculate(
-        probability=thesis.dominant_continuation.probability,
-        outcome=thesis.resolved_outcome,
-    )
-    print(f"Brier score: {score.score}")  # Lower is better (0=perfect, 1=worst)
+print(report.summary())
+# {"cases": ..., "mean_thesis_brier": ..., "mean_persistence_brier": ...,
+#  "skill_vs_persistence": ...}   # <=0 means the machinery isn't paying rent
 ```
+
+Leakage canaries are hard errors inside the harness: post-cutoff episodes
+never enter the snapshot database, and any analog carrying an outcome not
+knowable at the cutoff raises `LeakageError`. Brier scores use the 0–1
+single-probability convention (0 = perfect, 1 = worst).
 
 ## Development
 
