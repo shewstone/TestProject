@@ -269,8 +269,14 @@ class HistoricalDataset:
         return False
 
     def _similar_outcome(self, a: str, b: str) -> bool:
-        """Check if two outcomes are similar."""
+        """Check if two outcomes are similar.
+
+        Same rule as BacktestEngine._match_outcome: absolute overlap of 2+
+        words, or 30%+ of the shorter outcome's words — short outcomes like
+        "Market crashed" vs "Market crashes" share only one word.
+        """
         a_words = set(a.lower().split())
         b_words = set(b.lower().split())
         overlap = len(a_words & b_words)
-        return overlap >= 2
+        min_len = min(len(a_words), len(b_words))
+        return overlap >= 2 or (min_len > 0 and overlap / min_len >= 0.3)

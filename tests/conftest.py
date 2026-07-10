@@ -92,7 +92,10 @@ def sample_thesis_data():
     """Sample thesis data for testing."""
     return {
         "query": "Will 2024 see a market crash?",
-        "dominant_continuation": "Soft landing likely based on historical analogs",
+        "dominant_continuation": {
+            "description": "Soft landing likely based on historical analogs",
+            "probability": 0.65,
+        },
         "alternative_continuations": [("Hard landing", 0.3), ("Continued expansion", 0.2)],
         "watch_for_indicators": ["Credit spreads widening", "Yield curve inversion persistence"],
         "model_version": "gpt-4",

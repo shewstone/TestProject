@@ -18,11 +18,11 @@ from narrative_engine.thesis.generator import ThesisGenerator
 
 
 @pytest.mark.asyncio
-async def test_full_pipeline(engine, session):
+async def test_full_pipeline(db_session):
     """Test complete pipeline: create episodes → embed → retrieve → generate thesis."""
 
     # 1. Create historical episodes (simulated database)
-    factory = RepositoryFactory(session)
+    factory = RepositoryFactory(db_session)
 
     # Episode 1: 1929 Crash
     episode_1929 = Episode(
@@ -136,10 +136,10 @@ async def test_full_pipeline(engine, session):
 
 
 @pytest.mark.asyncio
-async def test_episode_analog_search_by_arc_type(engine, session):
+async def test_episode_analog_search_by_arc_type(db_session):
     """Test retrieving episodes by arc type similarity."""
 
-    factory = RepositoryFactory(session)
+    factory = RepositoryFactory(db_session)
 
     # Create episodes with different arc types
     episodes = [
@@ -166,10 +166,10 @@ async def test_episode_analog_search_by_arc_type(engine, session):
 
 
 @pytest.mark.asyncio
-async def test_cycle_episode_relationship(engine, session):
+async def test_cycle_episode_relationship(db_session):
     """Test creating cycles and associating episodes."""
 
-    factory = RepositoryFactory(session)
+    factory = RepositoryFactory(db_session)
 
     # Create a cycle
     cycle = Cycle(

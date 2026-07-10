@@ -30,6 +30,7 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Set working directory
 WORKDIR /app
+ENV PYTHONPATH=/app/src
 
 # Copy source code
 COPY --chown=appuser:appuser src/ ./src/
@@ -38,7 +39,8 @@ COPY --chown=appuser:appuser pyproject.toml .
 COPY --chown=appuser:appuser alembic.ini .
 COPY --chown=appuser:appuser alembic/ ./alembic/
 
-# Switch to non-root user
+# Make /app writable for coverage/pytest artifacts, then switch to non-root user
+RUN chown appuser:appuser /app
 USER appuser
 
 # Default command

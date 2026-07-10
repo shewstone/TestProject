@@ -239,7 +239,7 @@ for thesis in results:
         probability=thesis.dominant_continuation.probability,
         outcome=thesis.resolved_outcome,
     )
-    print(f"Brier score: {score.score}")  # Lower is better (0=perfect, 2=worst)
+    print(f"Brier score: {score.score}")  # Lower is better (0=perfect, 1=worst)
 ```
 
 ## Development

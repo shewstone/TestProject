@@ -7,6 +7,7 @@ import pytest
 from narrative_engine.models import (
     ArcPhase,
     ArcType,
+    Continuation,
     Cycle,
     CycleScale,
     Episode,
@@ -171,7 +172,10 @@ class TestDatabaseOperations:
             Thesis(
                 query="Will markets crash?",
                 query_date=datetime(2024, 1, 1),
-                dominant_continuation="Soft landing",
+                dominant_continuation=Continuation(
+                    description="Soft landing",
+                    probability=0.65,
+                ),
                 model_version="gpt-4",
                 taxonomy_version="v0.1.0",
             )

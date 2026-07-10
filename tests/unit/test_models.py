@@ -12,6 +12,7 @@ from narrative_engine.models import (
     ArcDefinition,
     ArcPhase,
     ArcType,
+    Continuation,
     Cycle,
     CycleMembership,
     CycleScale,
@@ -244,7 +245,10 @@ class TestThesis:
         thesis = Thesis(
             query="Current market conditions in 2024",
             query_date=datetime(2024, 1, 1),
-            dominant_continuation="Continued expansion with late-cycle risks",
+            dominant_continuation=Continuation(
+                description="Continued expansion with late-cycle risks",
+                probability=0.6,
+            ),
             model_version="gpt-4",
             taxonomy_version="v0.1.0",
         )
@@ -258,7 +262,7 @@ class TestThesis:
         thesis = Thesis(
             query="Test query",
             query_date=datetime.now(),
-            dominant_continuation="Expansion",
+            dominant_continuation=Continuation(description="Expansion", probability=0.7),
             analog_episode_ids=episode_ids,
             analog_similarity_scores=[0.92, 0.87, 0.84],
             model_version="gpt-4",
@@ -314,7 +318,7 @@ class TestIntegration:
         thesis = Thesis(
             query="Will 2024 see a crash?",
             query_date=datetime(2024, 1, 1),
-            dominant_continuation="Soft landing",
+            dominant_continuation=Continuation(description="Soft landing", probability=0.65),
             analog_episode_ids=[episode.id],
             model_version="gpt-4",
             taxonomy_version="v0.1.0",

@@ -140,6 +140,20 @@ class SmartChunker:
         # Split on double newlines (paragraphs)
         paragraphs = [p.strip() for p in re.split(r"\n\s*\n", content) if p.strip()]
 
+        # A single paragraph can exceed the target size on its own (OCR'd
+        # text, texts without paragraph breaks) -- hard-split those by word
+        # windows first, or the paragraph loop below emits them whole.
+        max_words = max(1, int(self.config.target_chunk_size * 0.75))
+        split_paragraphs: List[str] = []
+        for paragraph in paragraphs:
+            words = paragraph.split()
+            if len(words) <= max_words:
+                split_paragraphs.append(paragraph)
+            else:
+                for i in range(0, len(words), max_words):
+                    split_paragraphs.append(" ".join(words[i : i + max_words]))
+        paragraphs = split_paragraphs
+
         chunks = []
         current_chunk = []
         current_word_count = 0

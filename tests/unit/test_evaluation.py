@@ -35,9 +35,9 @@ class TestBrierScore:
         assert score.is_accurate is True
 
     def test_worst_prediction(self):
-        """Test worst prediction (2.0 Brier score)."""
+        """Test worst prediction (1.0 Brier score)."""
         score = BrierScore.calculate(probability=1.0, outcome=0)
-        assert score.score == 2.0
+        assert score.score == 1.0
         assert score.is_accurate is False
 
     def test_uncertain_correct(self):

@@ -12,7 +12,7 @@ from narrative_engine.models import Thesis, ThesisConfidence
 class BrierScore:
     """Brier score for probabilistic forecast evaluation."""
 
-    score: float  # 0.0 (perfect) to 2.0 (worst)
+    score: float  # 0.0 (perfect) to 1.0 (worst)
     probability: float  # Predicted probability
     outcome: int  # 1 if occurred, 0 if not
 
@@ -22,8 +22,10 @@ class BrierScore:
 
         Brier score = (probability - outcome)²
 
-        - Perfect prediction: 0.0
-        - Worst prediction: 2.0 (100% wrong)
+        Single-probability binary convention: 0.0 is perfect, 1.0 is the
+        worst (100% confidence in the wrong outcome). (The original
+        two-category sum convention doubles this; everything in this
+        codebase uses the 0-1 form.)
         """
         if not 0 <= probability <= 1:
             raise ValueError("Probability must be between 0 and 1")

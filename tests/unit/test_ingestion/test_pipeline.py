@@ -66,12 +66,18 @@ class TestIngestionPipeline:
         assert result.metadata.author == "John Doe"
 
     def test_ingest_nonexistent_file(self, pipeline, tmp_path):
-        """Ingesting nonexistent file fails gracefully."""
+        """Ingesting nonexistent file fails gracefully.
+
+        ingest_file catches errors and reports them on the result (so one
+        bad file can't abort ingest_directory) rather than raising.
+        """
         nonexistent = tmp_path / "does_not_exist.txt"
         output_dir = tmp_path / "output"
 
-        with pytest.raises(Exception):  # FileNotFoundError or similar
-            pipeline.ingest_file(nonexistent, output_dir)
+        result = pipeline.ingest_file(nonexistent, output_dir)
+
+        assert result.success is False
+        assert result.errors
 
     def test_ingest_directory(self, pipeline, tmp_path):
         """Ingest all files in a directory."""

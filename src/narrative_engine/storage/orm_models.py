@@ -384,7 +384,10 @@ class ThesisORM(Base):
     analog_similarity_scores: Mapped[list] = mapped_column(JSON, default=list)
 
     # Thesis content
-    dominant_continuation: Mapped[str] = mapped_column(Text, nullable=False)
+    # JSON-serialized models.Continuation ({description, probability,
+    # supporting_analogs}); nullable because arc-less theses can fail to
+    # produce a dominant continuation at all.
+    dominant_continuation: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     alternative_continuations: Mapped[list] = mapped_column(JSON, default=list)
     watch_for_indicators: Mapped[list] = mapped_column(JSON, default=list)
     confidence_interval: Mapped[Optional[tuple]] = mapped_column(JSON, nullable=True)

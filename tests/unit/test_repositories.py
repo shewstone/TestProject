@@ -5,7 +5,16 @@ from uuid import uuid4
 
 import pytest
 
-from narrative_engine.models import ArcPhase, ArcType, Cycle, CycleScale, Episode, MechanismTag, Thesis
+from narrative_engine.models import (
+    ArcPhase,
+    ArcType,
+    Continuation,
+    Cycle,
+    CycleScale,
+    Episode,
+    MechanismTag,
+    Thesis,
+)
 from narrative_engine.storage.repositories import (
     CycleRepository,
     EpisodeRepository,
@@ -213,7 +222,10 @@ class TestThesisRepository:
         return Thesis(
             query="Will 2024 see a market crash?",
             query_date=datetime(2024, 1, 1),
-            dominant_continuation="Soft landing likely",
+            dominant_continuation=Continuation(
+                description="Soft landing likely",
+                probability=0.65,
+            ),
             analog_episode_ids=[uuid4(), uuid4()],
             analog_similarity_scores=[0.92, 0.87],
             model_version="gpt-4",
@@ -257,7 +269,7 @@ class TestThesisRepository:
         resolved = Thesis(
             query="Resolved",
             query_date=datetime.now(),
-            dominant_continuation="Test",
+            dominant_continuation=Continuation(description="Test", probability=0.5),
             model_version="gpt-4",
             taxonomy_version="v0.1.0",
         )
@@ -268,7 +280,7 @@ class TestThesisRepository:
         unresolved = Thesis(
             query="Unresolved",
             query_date=datetime.now(),
-            dominant_continuation="Test",
+            dominant_continuation=Continuation(description="Test", probability=0.5),
             model_version="gpt-4",
             taxonomy_version="v0.1.0",
         )
@@ -289,7 +301,7 @@ class TestThesisRepository:
             thesis = Thesis(
                 query=f"Query {i}",
                 query_date=datetime.now(),
-                dominant_continuation="Test",
+                dominant_continuation=Continuation(description="Test", probability=0.5),
                 model_version="gpt-4",
                 taxonomy_version="v0.1.0",
             )

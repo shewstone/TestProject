@@ -119,6 +119,7 @@ def _build_instance_from_cluster(
             source_ids = episode.extracted_from if episode.extracted_from else ["unknown"]
             source_id = source_ids[0] if source_ids else "unknown"
 
+            # add_episode_to_phase maintains instance.source_coverage
             instance.add_episode_to_phase(
                 phase=episode.arc_phase,
                 episode_id=episode.id,
@@ -126,11 +127,6 @@ def _build_instance_from_cluster(
                 confidence=episode.phase_confidence or 0.5,
                 date=episode.start_date,
             )
-
-            for sid in source_ids:
-                instance.source_coverage[sid] = instance.source_coverage.get(
-                    sid, 0.0
-                ) + (1.0 / len(cluster))
 
     if expected_phases:
         instance.identify_gaps(expected_phases)

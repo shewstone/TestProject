@@ -7,12 +7,13 @@ from uuid import UUID
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload, selectinload
+from sqlalchemy.orm import selectinload
 
 from narrative_engine.logging_config import get_logger, LogTimer
 from narrative_engine.models import (
     Actor,
     ArcAssignment,
+    Continuation,
     Cycle,
     CycleMembership,
     Episode,
@@ -140,8 +141,34 @@ class EpisodeRepository:
         orm_episode = await self.session.get(EpisodeORM, episode_id)
         if orm_episode:
             await self.session.delete(orm_episode)
+            # Sessions run with autoflush=False in tests; without an explicit
+            # flush the delete stays pending and later reads still see the row.
+            await self.session.flush()
             return True
         return False
+
+    async def update_embedding(
+        self,
+        episode_id: UUID,
+        embedding: List[float],
+        kind: str = "structural",
+    ) -> None:
+        """Set one of an episode's embeddings.
+
+        kind is explicit ("structural" | "surface") because the two
+        collections answer different questions and must never be swapped
+        (design doc Sec 3.3a).
+        """
+        orm_episode = await self.session.get(EpisodeORM, episode_id)
+        if not orm_episode:
+            raise ValueError(f"Episode {episode_id} not found")
+        if kind == "structural":
+            orm_episode.structural_embedding = embedding
+        elif kind == "surface":
+            orm_episode.surface_embedding = embedding
+        else:
+            raise ValueError(f"Unknown embedding kind: {kind}")
+        await self.session.flush()
 
     async def search_by_embedding(
         self,
@@ -162,11 +189,9 @@ class EpisodeRepository:
         include_unclassified=True, since bare structural nearest-neighbor
         matching doesn't condition on arc labels at all.
         """
-        from pgvector.sqlalchemy import cosine_distance
-
         query = select(
             EpisodeORM,
-            cosine_distance(EpisodeORM.structural_embedding, embedding).label("distance"),
+            EpisodeORM.structural_embedding.cosine_distance(embedding).label("distance"),
         ).where(EpisodeORM.structural_embedding.is_not(None))
 
         if not include_unclassified:
@@ -209,6 +234,8 @@ class EpisodeRepository:
             version=episode.version,
             surface_embedding=episode.surface_embedding,
             structural_embedding=episode.structural_embedding,
+            created_at=episode.created_at,
+            updated_at=episode.updated_at,
         )
 
     def _from_orm(self, orm: EpisodeORM) -> Episode:
@@ -336,8 +363,8 @@ class CycleRepository:
             select(CycleORM)
             .where(CycleORM.id == cycle_id)
             .options(
-                joinedload(CycleORM.children),
-                joinedload(CycleORM.episodes),
+                selectinload(CycleORM.children),
+                selectinload(CycleORM.episodes),
             )
         )
         orm_cycle = result.scalar_one_or_none()
@@ -349,12 +376,21 @@ class CycleRepository:
         limit: int = 100,
     ) -> Sequence[Cycle]:
         """Get cycles by scale."""
-        result = await self.session.execute(select(CycleORM).where(CycleORM.scale == scale).limit(limit))
+        result = await self.session.execute(
+            select(CycleORM)
+            .where(CycleORM.scale == scale)
+            .options(selectinload(CycleORM.episodes))
+            .limit(limit)
+        )
         return [self._from_orm(c) for c in result.scalars().all()]
 
     async def get_children(self, cycle_id: UUID) -> Sequence[Cycle]:
         """Get child cycles."""
-        result = await self.session.execute(select(CycleORM).where(CycleORM.parent_cycle_id == cycle_id))
+        result = await self.session.execute(
+            select(CycleORM)
+            .where(CycleORM.parent_cycle_id == cycle_id)
+            .options(selectinload(CycleORM.episodes))
+        )
         return [self._from_orm(c) for c in result.scalars().all()]
 
     async def add_episode(self, cycle_id: UUID, episode_id: UUID) -> None:
@@ -403,15 +439,24 @@ class ThesisRepository:
             id=thesis.id,
             query=thesis.query,
             query_date=thesis.query_date,
-            analog_episode_ids=thesis.analog_episode_ids,
+            # JSON columns can't take raw UUIDs/models; Pydantic coerces the
+            # strings back on read in _from_orm.
+            analog_episode_ids=[str(eid) for eid in thesis.analog_episode_ids],
             analog_similarity_scores=thesis.analog_similarity_scores,
-            dominant_continuation=thesis.dominant_continuation,
+            dominant_continuation=(
+                thesis.dominant_continuation.model_dump(mode="json")
+                if thesis.dominant_continuation
+                else None
+            ),
             alternative_continuations=thesis.alternative_continuations,
             watch_for_indicators=thesis.watch_for_indicators,
             confidence_interval=thesis.confidence_interval,
             estimated_duration=thesis.estimated_duration,
             resolution_criteria=thesis.resolution_criteria,
-            cited_episodes=thesis.cited_episodes,
+            cited_episodes={
+                str(eid): [passage.model_dump(mode="json") for passage in passages]
+                for eid, passages in thesis.cited_episodes.items()
+            },
             mode=thesis.mode.value,
             model_version=thesis.model_version,
             taxonomy_version=thesis.taxonomy_version,
@@ -481,7 +526,9 @@ class ThesisRepository:
             query_date=orm.query_date,
             analog_episode_ids=orm.analog_episode_ids,
             analog_similarity_scores=orm.analog_similarity_scores,
-            dominant_continuation=orm.dominant_continuation,
+            dominant_continuation=(
+                Continuation(**orm.dominant_continuation) if orm.dominant_continuation else None
+            ),
             alternative_continuations=orm.alternative_continuations,
             watch_for_indicators=orm.watch_for_indicators,
             confidence_interval=orm.confidence_interval,

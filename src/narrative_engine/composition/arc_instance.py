@@ -35,12 +35,17 @@ class PhaseCoverage(BaseModel):
 
     @property
     def coverage_score(self) -> float:
-        """Calculate coverage score based on sources and confidence."""
+        """Calculate coverage score based on sources and confidence.
+
+        Confidence is the base signal: one well-attested source is real
+        coverage (a sources/3 factor would leave every single-source phase
+        permanently "under-covered"). Corroborating sources add a small
+        bonus, capped at 1.0.
+        """
         if not self.source_ids:
             return 0.0
-        # More sources = better coverage, up to a point
-        source_factor = min(len(self.source_ids) / 3, 1.0)
-        return source_factor * self.confidence
+        corroboration_bonus = 1 + 0.1 * (len(self.source_ids) - 1)
+        return min(1.0, self.confidence * corroboration_bonus)
 
 
 class ArcInstance(BaseModel):
@@ -137,6 +142,19 @@ class ArcInstance(BaseModel):
                 coverage.earliest_date = date
             if coverage.latest_date is None or date > coverage.latest_date:
                 coverage.latest_date = date
+
+        self._recompute_source_coverage()
+
+    def _recompute_source_coverage(self) -> None:
+        """Recompute source_coverage: fraction of known phases each source documents."""
+        total_phases = len(self.phases)
+        counts: Dict[str, int] = {}
+        for coverage in self.phases.values():
+            for source_id in coverage.source_ids:
+                counts[source_id] = counts.get(source_id, 0) + 1
+        self.source_coverage = {
+            source_id: count / total_phases for source_id, count in counts.items()
+        }
 
     def identify_gaps(self, expected_phases: List[ArcPhase]) -> List[str]:
         """Identify which expected phases are missing or under-covered."""

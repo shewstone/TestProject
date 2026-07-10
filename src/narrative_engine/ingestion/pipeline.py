@@ -14,9 +14,12 @@ from narrative_engine.ingestion.models import (
     ParsedDocument,
 )
 from narrative_engine.ingestion.parsers import get_parser
+# LogTimer comes from logging_config: the observability module exports a
+# @contextmanager of the same name with an incompatible (operation-first)
+# signature, and the calls below use the class form (logger, operation, **ctx).
+from narrative_engine.logging_config import LogTimer
 from narrative_engine.observability import (
     EpisodeNotFoundError,
-    LogTimer,
     get_logger,
 )
 

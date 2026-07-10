@@ -126,7 +126,9 @@ class ExtractionOrchestrator:
             self.logger.error("Pipeline failed", error=str(e), chunk_id=source_chunk_id)
             errors.append(f"Pipeline: {str(e)}")
 
-        processing_time_ms = int((time.time() - start_time) * 1000)
+        # Round up: a pipeline that ran reports at least 1ms, never a
+        # truncated-to-zero artifact for sub-millisecond (e.g. mocked) runs.
+        processing_time_ms = max(1, int((time.time() - start_time) * 1000))
 
         return PipelineResult(
             source_chunk_id=source_chunk_id,
