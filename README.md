@@ -45,6 +45,22 @@ docker compose run --rm app                     # full test suite
 docker compose run --rm -v ./alembic:/app/alembic app alembic upgrade head
 ```
 
+### Always-on server: drop directory + dashboard
+
+```bash
+docker compose up -d server     # dashboard on http://localhost:8000
+```
+
+Drop books/articles into `data/raw/` — the watcher picks them up
+automatically (settled files only, so half-copied files are safe), guards
+against duplicates by content hash (same bytes under any filename become a
+visible `duplicate` row, never reprocessed), chunks them, and — when
+`OPENAI_API_KEY`/`ANTHROPIC_API_KEY` is set — extracts episodes, embeds
+them, and composes arc instances. The dashboard shows the processing
+queue, arc instances as phase lanes with coverage gaps visible, and the
+review queue where a human approves or rejects inferred structure
+(design doc §6.4). **No auth: localhost/dev use only.**
+
 ### Local installation
 
 ```bash

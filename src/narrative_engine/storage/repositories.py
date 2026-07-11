@@ -21,13 +21,14 @@ from narrative_engine.models import (
     EpisodeLink,
     Thesis,
 )
-from narrative_engine.models import Scope
+from narrative_engine.models import Scope, SourceDocument
 from narrative_engine.storage.orm_models import (
     CycleMembershipORM,
     CycleORM,
     EpisodeLinkORM,
     EpisodeORM,
     ScopeORM,
+    SourceDocumentORM,
     ThesisORM,
 )
 
@@ -739,6 +740,107 @@ class ScopeRepository:
         )
 
 
+class SourceDocumentRepository:
+    """Repository for SourceDocument rows (T7): the watcher's ledger."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+
+    async def create(self, document: SourceDocument) -> SourceDocument:
+        self.session.add(self._to_orm(document))
+        await self.session.flush()
+        return document
+
+    async def get_by_id(self, document_id: UUID) -> Optional[SourceDocument]:
+        orm_doc = await self.session.get(SourceDocumentORM, document_id)
+        return self._from_orm(orm_doc) if orm_doc else None
+
+    async def get_original_by_hash(self, content_hash: str) -> Optional[SourceDocument]:
+        """The one non-duplicate row for this hash, if any."""
+        result = await self.session.execute(
+            select(SourceDocumentORM)
+            .where(
+                SourceDocumentORM.content_hash == content_hash,
+                SourceDocumentORM.status != "duplicate",
+            )
+            .limit(1)
+        )
+        orm_doc = result.scalar_one_or_none()
+        return self._from_orm(orm_doc) if orm_doc else None
+
+    async def has_row_for(self, content_hash: str, filename: str) -> bool:
+        """True if this exact (hash, filename) was already recorded --
+        keeps the watcher from re-recording the same sitting file every
+        scan, across restarts."""
+        result = await self.session.execute(
+            select(func.count(SourceDocumentORM.id)).where(
+                SourceDocumentORM.content_hash == content_hash,
+                SourceDocumentORM.filename == filename,
+            )
+        )
+        return (result.scalar() or 0) > 0
+
+    async def list_all(self, limit: int = 200) -> Sequence[SourceDocument]:
+        result = await self.session.execute(
+            select(SourceDocumentORM)
+            .order_by(SourceDocumentORM.created_at.desc())
+            .limit(limit)
+        )
+        return [self._from_orm(d) for d in result.scalars().all()]
+
+    async def update(self, document: SourceDocument) -> SourceDocument:
+        from narrative_engine.models import utcnow
+
+        orm_doc = await self.session.get(SourceDocumentORM, document.id)
+        if not orm_doc:
+            raise ValueError(f"SourceDocument {document.id} not found")
+        orm_doc.status = document.status.value
+        orm_doc.error = document.error
+        orm_doc.chunks_created = document.chunks_created
+        orm_doc.chunks_processed = document.chunks_processed
+        orm_doc.episodes_created = document.episodes_created
+        orm_doc.extraction_ran = document.extraction_ran
+        orm_doc.duplicate_of = document.duplicate_of
+        orm_doc.updated_at = utcnow()
+        await self.session.flush()
+        document.updated_at = orm_doc.updated_at
+        return document
+
+    def _to_orm(self, document: SourceDocument) -> SourceDocumentORM:
+        return SourceDocumentORM(
+            id=document.id,
+            filename=document.filename,
+            content_hash=document.content_hash,
+            size_bytes=document.size_bytes,
+            status=document.status.value,
+            error=document.error,
+            chunks_created=document.chunks_created,
+            chunks_processed=document.chunks_processed,
+            episodes_created=document.episodes_created,
+            extraction_ran=document.extraction_ran,
+            duplicate_of=document.duplicate_of,
+            created_at=document.created_at,
+            updated_at=document.updated_at,
+        )
+
+    def _from_orm(self, orm: SourceDocumentORM) -> SourceDocument:
+        return SourceDocument(
+            id=orm.id,
+            filename=orm.filename,
+            content_hash=orm.content_hash,
+            size_bytes=orm.size_bytes,
+            status=orm.status,
+            error=orm.error,
+            chunks_created=orm.chunks_created,
+            chunks_processed=orm.chunks_processed,
+            episodes_created=orm.episodes_created,
+            extraction_ran=orm.extraction_ran,
+            duplicate_of=orm.duplicate_of,
+            created_at=orm.created_at,
+            updated_at=orm.updated_at,
+        )
+
+
 class EpisodeLinkRepository:
     """Repository for EpisodeLink (episode <-> episode) operations.
 
@@ -824,6 +926,8 @@ CYCLE_MEMBERSHIP_FIELDS_EXCLUDED: set = set()
 EPISODE_LINK_FIELDS_EXCLUDED: set = set()
 
 SCOPE_FIELDS_EXCLUDED: set = set()
+
+SOURCE_DOCUMENT_FIELDS_EXCLUDED: set = set()
 
 
 class RepositoryFactory:

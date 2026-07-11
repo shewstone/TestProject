@@ -269,6 +269,47 @@ class Continuation(BaseModel):
     supporting_analogs: int = 0
 
 
+class SourceDocumentStatus(str, Enum):
+    """Lifecycle of a dropped source file (T7)."""
+
+    QUEUED = "queued"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    DUPLICATE = "duplicate"  # same bytes already processed; never re-run
+
+
+class SourceDocument(BaseModel):
+    """A file dropped into the watch directory, tracked through processing.
+
+    content_hash is the duplicate guard: the same bytes under any filename
+    become a visible `duplicate` row pointing at the original instead of
+    silently reprocessing (duplicate narrations corrupt analog counts --
+    the failure class T6 mitigates downstream, prevented at the door here).
+    """
+
+    model_config = ConfigDict(frozen=False)
+
+    id: UUID = Field(default_factory=uuid4)
+    filename: str
+    content_hash: str  # sha256 hex of raw bytes
+    size_bytes: int = 0
+    status: SourceDocumentStatus = SourceDocumentStatus.QUEUED
+    error: Optional[str] = None
+    chunks_created: int = 0
+    # Live progress counter: how many chunks have completed extraction.
+    # The watcher commits after every chunk so the dashboard's polling
+    # session sees movement during long LLM runs.
+    chunks_processed: int = 0
+    episodes_created: int = 0
+    # False when processing completed without an LLM key: ingested and
+    # chunked, extraction pending -- visible degradation, never silent.
+    extraction_ran: bool = False
+    duplicate_of: Optional[UUID] = None
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
+
+
 class Scope(BaseModel):
     """A polity/civilization/region/system/dyad that cycle trees and
     episodes belong to (design doc Sec 4).

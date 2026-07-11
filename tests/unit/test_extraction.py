@@ -21,8 +21,8 @@ class TestLLMConfig:
         """Test default LLM configuration."""
         config = LLMConfig()
 
-        assert config.provider == "openai"
-        assert config.model == "gpt-4"
+        assert config.provider == "anthropic"
+        assert config.model == "claude-sonnet-5"
         assert config.temperature == 0.0
         assert config.max_tokens == 4000
 
@@ -52,8 +52,8 @@ class TestExtractionPipelineConfig:
         assert config.enable_extraction is True
         assert config.enable_classification is True
         assert config.enable_linking is True
-        assert config.segmentation_model == "gpt-3.5-turbo"
-        assert config.extraction_model == "gpt-4"
+        assert config.segmentation_model == "claude-haiku-4-5"
+        assert config.extraction_model == "claude-sonnet-5"
 
     def test_pipeline_config_from_env(self, monkeypatch):
         """Test pipeline configuration from environment."""

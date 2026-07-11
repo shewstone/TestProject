@@ -13,6 +13,9 @@ drift-proof the substrate.
 | [T4](T4-embedding-render-versioning.md) | Embedding/render epoch versioning + re-embed job | P0 | M | — | ✅ Done 2026-07-10 |
 | [T5](T5-scope-registry.md) | Scope registry + alias resolver | P1 | M | — | ✅ Done 2026-07-10 — scope-v0.1.0, 24 scopes |
 | [T6](T6-analog-dedup.md) | Analog dedup at retrieval (counts, not vibes) | P1 | S–M | — | ✅ Done 2026-07-10 |
+| [T7](T7-drop-directory-watcher.md) | Drop-directory watcher + duplicate-source guard | P1 | M | T3, T8 | ✅ Done 2026-07-11 |
+| [T8](T8-dashboard-and-review-ui.md) | Dashboard: queue, arc-formation view, review queue | P1 | M–L | T7 | ✅ Done 2026-07-11 — `docker compose up server`, :8000 |
+| [T9](T9-anthropic-llm-client.md) | Anthropic LLM client (Sonnet 5 extraction, Haiku segmentation) | P0 | M | — | ✅ Done 2026-07-11 — set `ANTHROPIC_API_KEY` to activate |
 
 **Recommended execution order:** T3 → T4 → T5 → T6 → T2 → T1.
 T3/T4 first because they protect everything that follows; T5/T6 are independent

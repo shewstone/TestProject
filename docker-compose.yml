@@ -24,8 +24,8 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/narrative_engine
       TEST_DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/narrative_engine_test
-      NE_LLM_PROVIDER: openai
-      NE_LLM_MODEL: gpt-4
+      NE_LLM_PROVIDER: anthropic
+      NE_LLM_MODEL: claude-sonnet-5
     volumes:
       - ./src:/app/src
       - ./tests:/app/tests
@@ -33,6 +33,34 @@ services:
       db:
         condition: service_healthy
     command: python -m pytest -v --tb=short
+
+  # Always-on app (T7/T8): drop-directory watcher + dashboard on :8000.
+  # NO AUTH -- localhost/dev binding assumption only.
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/narrative_engine
+      NE_WATCH_DIR: /app/data/raw
+      NE_LLM_PROVIDER: anthropic
+      NE_LLM_MODEL: claude-sonnet-5
+      # Set OPENAI_API_KEY / ANTHROPIC_API_KEY (e.g. via .env) to enable
+      # extraction; without a key files ingest with extraction pending.
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    volumes:
+      - ./src:/app/src
+      - ./data:/app/data
+      - ./alembic:/app/alembic
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn narrative_engine.api.app:app --host 0.0.0.0 --port 8000"
 
 volumes:
   postgres_data:

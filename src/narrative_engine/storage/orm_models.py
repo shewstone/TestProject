@@ -130,6 +130,41 @@ class EpisodeLinkORM(Base):
         return f"<EpisodeLinkORM(edge_kind={self.edge_kind}, {self.source_episode_id}->{self.target_episode_id})>"
 
 
+class SourceDocumentORM(Base):
+    """ORM model for SourceDocument (T7): dropped-file lifecycle rows.
+
+    content_hash is indexed (not unique): duplicate drops create visible
+    `duplicate` rows sharing the hash; the watcher guarantees only one
+    non-duplicate row per hash exists."""
+
+    __tablename__ = "source_documents"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    filename: Mapped[str] = mapped_column(String(500), nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    size_bytes: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="queued", nullable=False)
+    error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    chunks_created: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    chunks_processed: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    episodes_created: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    extraction_ran: Mapped[bool] = mapped_column(default=False, nullable=False)
+    duplicate_of: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("source_documents.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+
+    __table_args__ = (Index("ix_source_documents_status", "status"),)
+
+    def __repr__(self) -> str:
+        return f"<SourceDocumentORM(filename={self.filename}, status={self.status})>"
+
+
 class ScopeORM(Base):
     """ORM model for Scope (T5): mirror of the packaged scope registry so
     scope ids are queryable/joinable in SQL. narrative_engine.scopes is the

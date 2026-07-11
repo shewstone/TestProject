@@ -45,6 +45,11 @@ dependencies = [
     "tenacity>=8.2.0",
     "python-dotenv>=1.0.0",
     "python-dateutil>=2.8.0",
+    # Ingestion format parsers (Sec 6.1: EPUB/PDF/HTML are core inputs,
+    # not optional extras -- a book-ingesting system must parse books)
+    "ebooklib>=0.18",
+    "beautifulsoup4>=4.12.0",
+    "pdfplumber>=0.10.0",
 ]
 
 [project.optional-dependencies]

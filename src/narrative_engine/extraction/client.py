@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, Type, TypeVar
 
+import anthropic
 import openai
 import structlog
 from pydantic import BaseModel
@@ -149,6 +151,123 @@ class OpenAIClient(LLMClient):
             raise LLMError(f"Invalid JSON response: {e}") from e
 
 
+class AnthropicClient(LLMClient):
+    """Anthropic API client (T9, docs/tickets/T9-anthropic-llm-client.md).
+
+    Current Claude models (Sonnet 5, Opus 4.8/4.7) removed sampling
+    parameters — sending `temperature` returns a 400. This client therefore
+    accepts the interface's `temperature` argument and deliberately never
+    sends it; determinism steering is prompt-side. The SDK's built-in
+    retries handle 429/5xx, so no tenacity wrapper here.
+    """
+
+    SYSTEM_PROMPT = (
+        "You are a precise historical data extraction system. "
+        "Return only valid JSON, with no surrounding prose or markdown fences."
+    )
+
+    def __init__(self, config: LLMConfig, client: Optional[Any] = None) -> None:
+        super().__init__(config)
+        self.client = client or anthropic.AsyncAnthropic(
+            api_key=config.api_key
+            or os.getenv("ANTHROPIC_API_KEY")
+            or os.getenv("NE_LLM_API_KEY"),
+        )
+
+    async def complete(
+        self,
+        prompt: str,
+        model: Optional[str] = None,
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+        response_format: Optional[Type[T]] = None,
+    ) -> Dict[str, Any]:
+        """Send completion request to the Claude API."""
+        model = model or self.config.model
+        max_tokens = max_tokens or self.config.max_tokens
+        if temperature is not None:
+            logger.debug(
+                "temperature ignored: current Claude models reject sampling params",
+                requested_temperature=temperature,
+            )
+
+        try:
+            response = await self.client.messages.create(
+                model=model,
+                max_tokens=max_tokens,
+                system=self.SYSTEM_PROMPT,
+                messages=[{"role": "user", "content": prompt}],
+            )
+        except anthropic.BadRequestError as e:
+            logger.error("Anthropic bad request", error=str(e), model=model)
+            raise LLMError(f"Bad request: {e}") from e
+        except anthropic.AuthenticationError as e:
+            logger.error("Anthropic authentication failed", error=str(e))
+            raise LLMError("Authentication failed—check ANTHROPIC_API_KEY") from e
+        except anthropic.APIStatusError as e:
+            logger.error("Anthropic API error", error=str(e), status=e.status_code)
+            raise LLMError(f"API error ({e.status_code}): {e}") from e
+        except anthropic.APIConnectionError as e:
+            logger.error("Anthropic connection failed", error=str(e))
+            raise LLMError(f"Connection failed: {e}") from e
+
+        # Check stop_reason BEFORE reading content: a refusal or truncation
+        # must surface as a visible per-stage error, never as garbled JSON.
+        if response.stop_reason == "refusal":
+            raise LLMError(f"Model refused the request (model={model})")
+        if response.stop_reason == "max_tokens":
+            raise LLMError(
+                f"Response truncated at max_tokens={max_tokens} (model={model}); "
+                "raise NE_LLM_MAX_TOKENS"
+            )
+
+        content = next(
+            (block.text for block in response.content if block.type == "text"), ""
+        )
+        if not content:
+            raise LLMError("Empty response from Anthropic")
+
+        usage = response.usage
+        return {
+            "content": content,
+            "model": response.model,
+            "usage": {
+                "prompt_tokens": usage.input_tokens if usage else 0,
+                "completion_tokens": usage.output_tokens if usage else 0,
+                "total_tokens": (usage.input_tokens + usage.output_tokens) if usage else 0,
+            },
+        }
+
+    async def complete_with_json(
+        self,
+        prompt: str,
+        model: Optional[str] = None,
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Send completion request and parse JSON."""
+        result = await self.complete(
+            prompt=prompt,
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+
+        text = self._strip_fences(result["content"])
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError as e:
+            logger.error("Failed to parse JSON response", content=text[:200])
+            raise LLMError(f"Invalid JSON response: {e}") from e
+
+    @staticmethod
+    def _strip_fences(text: str) -> str:
+        """Strip a markdown code fence if the model wrapped its JSON in one."""
+        text = text.strip()
+        match = re.match(r"^```(?:json)?\s*(.*?)\s*```$", text, re.DOTALL)
+        return match.group(1) if match else text
+
+
 class ExtractionPipeline:
     """Main extraction pipeline coordinating LLM calls."""
 
@@ -165,10 +284,10 @@ class ExtractionPipeline:
         """Create default LLM client from environment."""
         llm_config = LLMConfig.from_env()
 
-        if llm_config.provider == "openai":
+        if llm_config.provider == "anthropic":
+            return AnthropicClient(llm_config)
+        elif llm_config.provider == "openai":
             return OpenAIClient(llm_config)
-        # elif llm_config.provider == "anthropic":
-        #     return AnthropicClient(llm_config)
         else:
             raise LLMError(f"Unsupported provider: {llm_config.provider}")
 

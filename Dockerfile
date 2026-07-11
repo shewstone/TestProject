@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 COPY pyproject.toml README.md .
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -e ".[dev,llm]"
+    pip install --no-cache-dir -e ".[dev,llm,web]"
 
 # Runtime stage
 FROM python:3.12-slim AS runtime

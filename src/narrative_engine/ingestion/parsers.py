@@ -388,6 +388,7 @@ class EpubParser(BaseParser):
                 "pip install ebooklib beautifulsoup4"
             )
 
+        import ebooklib
         from ebooklib import epub
 
         book = epub.read_epub(file_path)

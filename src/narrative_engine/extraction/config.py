@@ -13,29 +13,38 @@ from narrative_engine.models import MechanismTag
 class LLMConfig:
     """Configuration for LLM providers."""
 
-    provider: str = "openai"  # openai, anthropic
-    model: str = "gpt-4"
-    temperature: float = 0.0  # Low for deterministic extraction
+    provider: str = "anthropic"  # anthropic, openai
+    model: str = "claude-sonnet-5"
+    # NOTE: temperature applies to the OpenAI path only. Current Claude
+    # models (Sonnet 5, Opus 4.8/4.7) removed sampling parameters — the
+    # AnthropicClient never sends it (a request carrying it returns 400).
+    temperature: float = 0.0
     max_tokens: int = 4000
     api_key: Optional[str] = None
 
     @classmethod
     def from_env(cls, prefix: str = "NE_") -> LLMConfig:
         """Create config from environment variables."""
-        provider = os.getenv(f"{prefix}LLM_PROVIDER", "openai")
+        provider = os.getenv(f"{prefix}LLM_PROVIDER", "anthropic")
 
-        # Default models by provider
+        # Default models by provider (T9: Sonnet chosen 2026-07-11 —
+        # near-Opus extraction quality at Sonnet cost; per-stage overrides
+        # below make upgrading any single stage a one-variable change)
         default_models = {
+            "anthropic": "claude-sonnet-5",
             "openai": "gpt-4",
-            "anthropic": "claude-3-opus-20240229",
         }
 
         return cls(
             provider=provider,
-            model=os.getenv(f"{prefix}LLM_MODEL", default_models.get(provider, "gpt-4")),
+            model=os.getenv(
+                f"{prefix}LLM_MODEL", default_models.get(provider, "claude-sonnet-5")
+            ),
             temperature=float(os.getenv(f"{prefix}LLM_TEMPERATURE", "0.0")),
             max_tokens=int(os.getenv(f"{prefix}LLM_MAX_TOKENS", "4000")),
-            api_key=os.getenv(f"{prefix}LLM_API_KEY") or os.getenv("OPENAI_API_KEY") or os.getenv("ANTHROPIC_API_KEY"),
+            api_key=os.getenv(f"{prefix}LLM_API_KEY")
+            or os.getenv("ANTHROPIC_API_KEY")
+            or os.getenv("OPENAI_API_KEY"),
         )
 
 
@@ -49,11 +58,12 @@ class ExtractionPipelineConfig:
     enable_classification: bool = True
     enable_linking: bool = True
 
-    # Model routing by stage (cheap → expensive)
-    segmentation_model: str = "gpt-3.5-turbo"  # Cheap, fast
-    extraction_model: str = "gpt-4"  # Good structured output
-    classification_model: str = "gpt-4"  # Requires judgment
-    linking_model: str = "gpt-4"  # Complex reasoning
+    # Model routing by stage (design doc Sec 7: "cheap model for
+    # segmentation, strong model for extraction/classification/synthesis")
+    segmentation_model: str = "claude-haiku-4-5"  # Cheap, fast
+    extraction_model: str = "claude-sonnet-5"  # Structured episode records
+    classification_model: str = "claude-sonnet-5"  # Arc/phase judgment
+    linking_model: str = "claude-sonnet-5"  # Causal-evidence extraction
 
     # Chunk settings
     chunk_size_tokens: int = 6000  # ~2-8k tokens per chunk
@@ -90,10 +100,10 @@ class ExtractionPipelineConfig:
             enable_extraction=os.getenv(f"{prefix}ENABLE_EXTRACTION", "true").lower() == "true",
             enable_classification=os.getenv(f"{prefix}ENABLE_CLASSIFICATION", "true").lower() == "true",
             enable_linking=os.getenv(f"{prefix}ENABLE_LINKING", "true").lower() == "true",
-            segmentation_model=os.getenv(f"{prefix}SEG_MODEL", "gpt-3.5-turbo"),
-            extraction_model=os.getenv(f"{prefix}EXTRACT_MODEL", "gpt-4"),
-            classification_model=os.getenv(f"{prefix}CLASSIFY_MODEL", "gpt-4"),
-            linking_model=os.getenv(f"{prefix}LINK_MODEL", "gpt-4"),
+            segmentation_model=os.getenv(f"{prefix}SEG_MODEL", "claude-haiku-4-5"),
+            extraction_model=os.getenv(f"{prefix}EXTRACT_MODEL", "claude-sonnet-5"),
+            classification_model=os.getenv(f"{prefix}CLASSIFY_MODEL", "claude-sonnet-5"),
+            linking_model=os.getenv(f"{prefix}LINK_MODEL", "claude-sonnet-5"),
             chunk_size_tokens=int(os.getenv(f"{prefix}CHUNK_SIZE", "6000")),
             chunk_overlap_tokens=int(os.getenv(f"{prefix}CHUNK_OVERLAP", "500")),
             classification_confidence_floor=float(os.getenv(f"{prefix}TAU_CLASS", "0.5")),

@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Narrative Engine</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --border: #2a2f3a; --text: #d7dae0;
+    --dim: #8b91a0; --accent: #6aa1ff; --ok: #4fbf7a; --warn: #e0b34f;
+    --err: #e06a6a; --dup: #b07fe0;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 14px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  header { padding: 14px 22px; border-bottom: 1px solid var(--border);
+           display: flex; gap: 24px; align-items: baseline; }
+  header h1 { font-size: 16px; margin: 0; letter-spacing: 0.04em; }
+  header .stat { color: var(--dim); }
+  header .stat b { color: var(--text); }
+  main { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 16px 22px; }
+  section { background: var(--panel); border: 1px solid var(--border);
+            border-radius: 8px; padding: 14px 16px; overflow: auto; }
+  section.wide { grid-column: 1 / -1; }
+  h2 { font-size: 13px; margin: 0 0 10px; color: var(--accent);
+       text-transform: uppercase; letter-spacing: 0.08em; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; color: var(--dim); font-weight: normal;
+       border-bottom: 1px solid var(--border); padding: 4px 8px; }
+  td { padding: 5px 8px; border-bottom: 1px solid #1e222b; vertical-align: top; }
+  .badge { padding: 1px 8px; border-radius: 10px; font-size: 12px; }
+  .badge.completed { background: #17351f; color: var(--ok); }
+  .badge.processing, .badge.queued { background: #33301a; color: var(--warn); }
+  .badge.failed { background: #3a1d1d; color: var(--err); }
+  .badge.duplicate { background: #2c1f3a; color: var(--dup); }
+  .dim { color: var(--dim); }
+  .arc { margin: 0 0 18px; }
+  .arc .name { margin-bottom: 6px; }
+  .arc .scope { color: var(--dim); }
+  .lane { display: flex; gap: 4px; margin: 4px 0 6px; }
+  .phase { flex: 1; height: 22px; border: 1px solid var(--border); border-radius: 4px;
+           display: flex; align-items: center; justify-content: center;
+           font-size: 11px; color: var(--dim); }
+  .phase.covered { background: #1b2c46; border-color: var(--accent); color: var(--accent); }
+  .eps { font-size: 12px; color: var(--dim); }
+  .eps .inferred { color: var(--dup); }
+  button { background: transparent; border: 1px solid var(--border); color: var(--text);
+           border-radius: 5px; padding: 2px 10px; cursor: pointer; font: inherit; font-size: 12px; }
+  button:hover { border-color: var(--accent); color: var(--accent); }
+  button.reject:hover { border-color: var(--err); color: var(--err); }
+  .empty { color: var(--dim); font-style: italic; padding: 8px 0; }
+  progress { width: 90px; height: 8px; accent-color: var(--accent); vertical-align: middle; }
+  footer { padding: 8px 22px 20px; color: var(--dim); font-size: 12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>NARRATIVE ENGINE</h1>
+  <span class="stat">episodes <b id="stat-episodes">–</b></span>
+  <span class="stat">arc instances <b id="stat-instances">–</b></span>
+  <span class="stat">documents <b id="stat-documents">–</b></span>
+  <span class="stat">pending reviews <b id="stat-reviews">–</b></span>
+  <span class="stat" id="stat-updated"></span>
+</header>
+<main>
+  <section class="wide">
+    <h2>Arc instances — phase coverage</h2>
+    <div id="arcs"><div class="empty">No arc instances yet. Drop sources into data/raw/ and let extraction + composition run.</div></div>
+  </section>
+  <section>
+    <h2>Processing queue</h2>
+    <div id="queue"></div>
+  </section>
+  <section>
+    <h2>Review queue — human ratifies structure</h2>
+    <div id="review"></div>
+  </section>
+</main>
+<footer>
+  Drop files into <code>data/raw/</code>. Duplicates (same bytes, any filename) are rejected at the door.
+  Filled phase segments are documented by at least one episode; hollow segments are coverage gaps.
+  Purple episodes are <i>inferred</i> links (composed, not textually attested).
+</footer>
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g,
+  (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+async function fetchJSON(url, opts) {
+  const res = await fetch(url, opts);
+  if (!res.ok) throw new Error(url + " -> " + res.status);
+  return res.json();
+}
+
+function renderHealth(h) {
+  $("stat-episodes").textContent = h.episodes;
+  $("stat-instances").textContent = h.arc_instances;
+  $("stat-documents").textContent = h.documents;
+  $("stat-reviews").textContent = h.pending_reviews;
+  $("stat-updated").textContent = "updated " + new Date().toLocaleTimeString();
+}
+
+function renderQueue(docs) {
+  if (!docs.length) { $("queue").innerHTML = '<div class="empty">Nothing processed yet.</div>'; return; }
+  const rows = docs.map(d => `
+    <tr>
+      <td>${esc(d.filename)}${d.duplicate_of ? ' <span class="dim">(dup)</span>' : ""}</td>
+      <td><span class="badge ${esc(d.status)}">${esc(d.status)}</span></td>
+      <td class="dim">${d.status === "processing" && d.chunks_created > 0
+          ? `<progress max="${d.chunks_created}" value="${d.chunks_processed}"></progress> ${d.chunks_processed}/${d.chunks_created} ch · ${d.episodes_created} ep`
+          : `${d.chunks_created} ch / ${d.episodes_created} ep${d.extraction_ran ? "" : d.status === "completed" ? " · extraction pending (no LLM key)" : ""}`}</td>
+      <td class="dim">${d.error ? esc(d.error) : ""}
+          ${d.status === "failed" || (d.status === "completed" && !d.extraction_ran)
+            ? `<button onclick="retryDoc('${d.id}')">${d.status === "failed" ? "retry" : "extract"}</button>` : ""}</td>
+    </tr>`).join("");
+  $("queue").innerHTML = `<table>
+    <tr><th>file</th><th>status</th><th>progress</th><th>note</th></tr>${rows}</table>`;
+}
+
+function renderArcs(arcs) {
+  if (!arcs.length) return; // keep the empty-state message
+  $("arcs").innerHTML = arcs.map(a => {
+    const phases = a.expected_phases.length ? a.expected_phases
+      : [...new Set(a.episodes.map(e => e.phase).filter(Boolean))];
+    const lane = phases.map(p =>
+      `<div class="phase ${a.covered_phases.includes(p) ? "covered" : ""}">${esc(p)}</div>`
+    ).join("");
+    const eps = a.episodes.map(e =>
+      `<span class="${e.link_status === "inferred" ? "inferred" : ""}" title="${esc(e.phase || "")} ${esc(e.start_date || "")}">● ${esc(e.title)}</span>`
+    ).join(" &nbsp; ");
+    return `<div class="arc">
+      <div class="name">${esc(a.name)} <span class="scope">[${esc(a.scope_id || "unscoped")}]</span></div>
+      <div class="lane">${lane}</div>
+      <div class="eps">${eps}</div>
+    </div>`;
+  }).join("");
+}
+
+function renderReview(q) {
+  const items = [];
+  for (const m of q.memberships) {
+    items.push(`<tr>
+      <td>membership</td>
+      <td>${esc(m.episode)} <span class="dim">→</span> ${esc(m.cycle)} <span class="dim">(${esc(m.link_status)})</span></td>
+      <td>
+        <button onclick="review('membership','${m.id}','approved')">approve</button>
+        <button class="reject" onclick="review('membership','${m.id}','rejected')">reject</button>
+      </td></tr>`);
+  }
+  for (const l of q.links) {
+    items.push(`<tr>
+      <td>${esc(l.edge_kind)}</td>
+      <td>${esc(l.source)} <span class="dim">→</span> ${esc(l.target)} <span class="dim">(${esc(l.link_status)})</span></td>
+      <td>
+        <button onclick="review('link','${l.id}','approved')">approve</button>
+        <button class="reject" onclick="review('link','${l.id}','rejected')">reject</button>
+      </td></tr>`);
+  }
+  $("review").innerHTML = items.length
+    ? `<table><tr><th>kind</th><th>proposal</th><th></th></tr>${items.join("")}</table>`
+    : '<div class="empty">Nothing awaiting review.</div>';
+}
+
+async function retryDoc(id) {
+  await fetchJSON(`/api/documents/${id}/retry`, {method: "POST"});
+  refresh();
+}
+
+async function review(kind, id, decision) {
+  await fetchJSON(`/api/review/${kind}/${id}`, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({decision}),
+  });
+  refresh();
+}
+
+async function refresh() {
+  try {
+    const [health, docs, arcs, queue] = await Promise.all([
+      fetchJSON("/api/health"), fetchJSON("/api/documents"),
+      fetchJSON("/api/arc-instances"), fetchJSON("/api/review-queue"),
+    ]);
+    renderHealth(health); renderQueue(docs); renderArcs(arcs); renderReview(queue);
+  } catch (err) {
+    $("stat-updated").textContent = "refresh failed: " + err.message;
+  }
+}
+
+refresh();
+setInterval(refresh, 3000);
+</script>
+</body>
+</html>
