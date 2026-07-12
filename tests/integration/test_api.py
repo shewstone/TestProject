@@ -24,6 +24,7 @@ from narrative_engine.models import (
     LinkStatus,
     ReviewStatus,
     SourceDocument,
+    SourceDocumentStatus,
 )
 from narrative_engine.storage.repositories import (
     CycleMembershipRepository,
@@ -95,14 +96,20 @@ class TestRetryEndpoint:
             content_hash="d" * 64,
             status="failed",
             error="EPUB parsing requires ebooklib",
+            chunks_created=10,
+            chunks_processed=4,
+            episodes_created=12,
         )
         await repo.create(failed)
 
         response = await client.post(f"/api/documents/{failed.id}/retry")
         assert response.status_code == 200
 
-        # Row is gone -> the watcher will re-pick the file next scan.
-        assert await repo.get_by_id(failed.id) is None
+        queued = await repo.get_by_id(failed.id)
+        assert queued is not None
+        assert queued.status == SourceDocumentStatus.QUEUED
+        assert queued.chunks_processed == 4
+        assert queued.episodes_created == 12
 
     @pytest.mark.asyncio
     async def test_extraction_pending_is_retryable(self, client, db_session):
@@ -119,7 +126,9 @@ class TestRetryEndpoint:
 
         response = await client.post(f"/api/documents/{pending.id}/retry")
         assert response.status_code == 200
-        assert await repo.get_by_id(pending.id) is None
+        queued = await repo.get_by_id(pending.id)
+        assert queued is not None
+        assert queued.status == SourceDocumentStatus.QUEUED
 
     @pytest.mark.asyncio
     async def test_fully_extracted_and_duplicate_are_not_retryable(self, client, db_session):

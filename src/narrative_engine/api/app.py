@@ -309,12 +309,13 @@ def create_app(start_watcher: Optional[bool] = None) -> FastAPI:
     async def retry_document(
         document_id: UUID, session: AsyncSession = Depends(get_session)
     ) -> dict:
-        """Clear a row so the watcher re-picks the file next scan.
+        """Queue a row so the watcher resumes it on the next scan.
 
         Retryable: failed rows, and completed rows whose extraction never
         ran (ingested before an LLM key was configured — re-picking them is
         exactly the "key arrived later" path). Fully-extracted work is not
-        silently redone, and duplicates were rejected on purpose.
+        silently redone, and duplicates were rejected on purpose. Existing
+        chunk progress stays intact so retries resume rather than duplicate.
         """
         row = await session.get(SourceDocumentORM, document_id)
         if row is None:
@@ -327,7 +328,8 @@ def create_app(start_watcher: Optional[bool] = None) -> FastAPI:
                 409,
                 f"not retryable (status={row.status}, extraction_ran={row.extraction_ran})",
             )
-        await session.delete(row)
+        row.status = "queued"
+        row.error = None
         await session.flush()
         await session.commit()
         return {"id": str(document_id), "retried": True}

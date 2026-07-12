@@ -16,11 +16,15 @@ import asyncio
 import hashlib
 import os
 import time
+from contextlib import suppress
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
+from uuid import UUID, uuid4
 
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from narrative_engine.logging_config import get_logger
 from narrative_engine.models import SourceDocument, SourceDocumentStatus
@@ -30,6 +34,11 @@ from narrative_engine.storage.repositories import (
 )
 
 logger = get_logger(__name__)
+
+
+class ClaimLostError(RuntimeError):
+    """Raised when another worker has taken over an expired claim."""
+
 
 IGNORED_SUFFIXES = {".part", ".tmp", ".crdownload", ".swp"}
 
@@ -65,9 +74,10 @@ class DocumentProcessor:
     """Processes one dropped file end-to-end. Collaborators are injectable
     so tests never need a model download or an API key."""
 
-    def __init__(self, extractor=None, embedder=None) -> None:
+    def __init__(self, extractor=None, embedder=None, lease_seconds: float = 3600.0) -> None:
         self._extractor = extractor
         self._embedder = embedder
+        self._lease_seconds = lease_seconds
 
     def _get_extractor(self):
         if self._extractor is None and llm_configured():
@@ -83,6 +93,45 @@ class DocumentProcessor:
             self._embedder = EmbeddingGenerator()
         return self._embedder
 
+    def _lease_expiry(self) -> datetime:
+        return datetime.now(timezone.utc) + timedelta(seconds=self._lease_seconds)
+
+    async def _heartbeat_claim(
+        self,
+        session_factory,
+        document_id: UUID,
+        claim_token: UUID,
+        stopped: asyncio.Event,
+        claim_lost: asyncio.Event,
+    ) -> None:
+        interval = max(0.1, self._lease_seconds / 3)
+        while not stopped.is_set():
+            try:
+                await asyncio.wait_for(stopped.wait(), timeout=interval)
+                return
+            except asyncio.TimeoutError:
+                pass
+            try:
+                async with session_factory() as heartbeat_session:
+                    repo = SourceDocumentRepository(heartbeat_session)
+                    renewed = await repo.renew_claim(
+                        document_id,
+                        claim_token,
+                        self._lease_expiry(),
+                    )
+                    await heartbeat_session.commit()
+            except Exception as exc:
+                logger.error(
+                    "document_claim_heartbeat_failed",
+                    document_id=str(document_id),
+                    error=str(exc),
+                )
+                claim_lost.set()
+                return
+            if not renewed:
+                claim_lost.set()
+                return
+
     async def process_file(
         self, session: AsyncSession, path: Path
     ) -> Optional[SourceDocument]:
@@ -93,10 +142,18 @@ class DocumentProcessor:
         raw = path.read_bytes()
         content_hash = hashlib.sha256(raw).hexdigest()
 
-        if await repo.has_row_for(content_hash, path.name):
-            return None  # already recorded (this or a previous run)
+        existing = await repo.get_by_hash_and_filename(content_hash, path.name)
+        if existing is not None:
+            if existing.status not in {
+                SourceDocumentStatus.QUEUED,
+                SourceDocumentStatus.PROCESSING,
+            }:
+                return None
+            document = existing
+        else:
+            document = None
 
-        original = await repo.get_original_by_hash(content_hash)
+        original = await repo.get_original_by_hash(content_hash) if document is None else None
         if original is not None:
             document = SourceDocument(
                 filename=path.name,
@@ -114,29 +171,74 @@ class DocumentProcessor:
             )
             return document
 
-        document = SourceDocument(
-            filename=path.name,
-            content_hash=content_hash,
-            size_bytes=len(raw),
-        )
-        await repo.create(document)
+        if document is None:
+            document = SourceDocument(
+                filename=path.name,
+                content_hash=content_hash,
+                size_bytes=len(raw),
+            )
+            try:
+                async with session.begin_nested():
+                    await repo.create(document)
+            except IntegrityError:
+                # Another watcher inserted this exact drop first.
+                return None
 
+        claim_token = uuid4()
+        if not await repo.claim_available(
+            document.id,
+            claim_token,
+            self._lease_expiry(),
+        ):
+            return None
         document.status = SourceDocumentStatus.PROCESSING
-        await repo.update(document)
+        document.error = None
         # Commit checkpoints so the dashboard's polling session sees status
         # transitions and per-chunk progress DURING long LLM runs, not just
         # at the end of the scan (READ COMMITTED hides uncommitted flushes).
         await session.commit()
 
+        session_factory = async_sessionmaker(bind=session.bind, expire_on_commit=False)
+        heartbeat_stopped = asyncio.Event()
+        claim_lost = asyncio.Event()
+        heartbeat = asyncio.create_task(
+            self._heartbeat_claim(
+                session_factory,
+                document.id,
+                claim_token,
+                heartbeat_stopped,
+                claim_lost,
+            )
+        )
         try:
-            await self._run_pipeline(session, path, document, repo)
+            await self._run_pipeline(
+                session,
+                path,
+                document,
+                repo,
+                claim_token,
+                claim_lost,
+            )
+            if claim_lost.is_set():
+                raise ClaimLostError("document claim was replaced")
             document.status = SourceDocumentStatus.COMPLETED
+        except ClaimLostError:
+            await session.rollback()
+            return None
         except Exception as exc:  # one bad file must not stop the loop
+            await session.rollback()
             logger.error("document_processing_failed", filename=path.name, error=str(exc))
             document.status = SourceDocumentStatus.FAILED
             document.error = str(exc)
+        finally:
+            heartbeat_stopped.set()
+            heartbeat.cancel()
+            with suppress(asyncio.CancelledError):
+                await heartbeat
 
-        await repo.update(document)
+        if not await repo.update_claimed(document, claim_token):
+            await session.rollback()
+            return None
         await session.commit()
         return document
 
@@ -146,6 +248,8 @@ class DocumentProcessor:
         path: Path,
         document: SourceDocument,
         repo: SourceDocumentRepository,
+        claim_token: UUID,
+        claim_lost: asyncio.Event,
     ) -> None:
         from narrative_engine.ingestion.chunker import SmartChunker
         from narrative_engine.ingestion.parsers import get_parser
@@ -157,7 +261,8 @@ class DocumentProcessor:
         parsed = parser.parse(path)
         chunks = SmartChunker().chunk_document(parsed)
         document.chunks_created = len(chunks)
-        await repo.update(document)
+        if not await repo.update_claimed(document, claim_token):
+            raise ClaimLostError("document claim was replaced")
         await session.commit()  # total chunk count visible immediately
 
         extractor = self._get_extractor()
@@ -168,32 +273,45 @@ class DocumentProcessor:
         episode_repo = EpisodeRepository(session)
         embedder = self._get_embedder()
         arc_types_seen = set()
-
-        for chunk in chunks:
-            result = await extractor.process_text(
-                text=chunk.content,
-                source_chunk_id=chunk.chunk_id,
-                session=session,
+        remaining_chunks = chunks[document.chunks_processed :]
+        if not remaining_chunks:
+            arc_types_seen.update(
+                await episode_repo.get_arc_types_for_chunks(
+                    [chunk.chunk_id for chunk in chunks]
+                )
             )
-            for episode in result.episodes:
-                await episode_repo.update_embedding(
-                    episode.id,
-                    embedder.generate_surface_embedding(episode),
-                    kind="surface",
+
+        for chunk in remaining_chunks:
+            async with session.begin_nested():
+                result = await extractor.process_text(
+                    text=chunk.content,
+                    source_chunk_id=chunk.chunk_id,
+                    session=session,
                 )
-                await episode_repo.update_embedding(
-                    episode.id,
-                    embedder.generate_structural_embedding(episode),
-                    kind="structural",
-                )
-                if episode.arc_type:
-                    arc_types_seen.add(episode.arc_type)
+                if result.errors:
+                    raise RuntimeError("; ".join(result.errors))
+                for episode in result.episodes:
+                    await episode_repo.update_embedding(
+                        episode.id,
+                        embedder.generate_surface_embedding(episode),
+                        kind="surface",
+                    )
+                    await episode_repo.update_embedding(
+                        episode.id,
+                        embedder.generate_structural_embedding(episode),
+                        kind="structural",
+                    )
+                    if episode.arc_type:
+                        arc_types_seen.add(episode.arc_type)
+                if claim_lost.is_set():
+                    raise ClaimLostError("document claim was replaced")
             document.episodes_created += len(result.episodes)
             document.chunks_processed += 1
             # Per-chunk checkpoint: progress survives a crash mid-book and
             # the dashboard renders it live. Also makes extracted episodes
             # durable as they land instead of all-or-nothing at file end.
-            await repo.update(document)
+            if not await repo.update_claimed(document, claim_token):
+                raise ClaimLostError("document claim was replaced")
             await session.commit()
 
         # Composition pass: stitch the new episodes (plus any existing

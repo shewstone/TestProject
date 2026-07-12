@@ -501,6 +501,50 @@ class TestExtractionOrchestrator:
         assert result.start_date.year == 1929
 
     @pytest.mark.asyncio
+    async def test_parse_month_name_containing_to_as_single_date(self, mock_pipeline):
+        from narrative_engine.models import Episode
+
+        episode = await ExtractionOrchestrator(pipeline=mock_pipeline)._parse_dates(
+            Episode(title="Preface", summary="Publication date"),
+            "October 1869",
+            "month",
+        )
+
+        assert episode.start_date is not None
+        assert (episode.start_date.year, episode.start_date.month) == (1869, 10)
+        assert episode.end_date is None
+        assert episode.date_precision == "month"
+
+    @pytest.mark.asyncio
+    async def test_extract_segment_uses_llm_normalized_dates(self, mock_pipeline):
+        mock_pipeline.extract.return_value = {
+            "title": "Publication",
+            "summary": "The work was published.",
+            "setting": {
+                "location": "London",
+                "time_period_label": "October 1869",
+                "start_date": "1869-10",
+                "end_date": None,
+                "date_precision": "month",
+                "date_basis": "explicit",
+                "date_confidence": 0.99,
+            },
+            "actors": [],
+        }
+
+        episode = await ExtractionOrchestrator(pipeline=mock_pipeline)._extract_segment(
+            {"summary": "Publication", "text": "Published in October 1869."},
+            "Published in October 1869.",
+            "chunk-1",
+        )
+
+        assert episode is not None
+        assert episode.start_date is not None
+        assert (episode.start_date.year, episode.start_date.month) == (1869, 10)
+        assert episode.end_date is None
+        assert episode.date_precision == "month"
+
+    @pytest.mark.asyncio
     async def test_process_batch(self, mock_pipeline):
         """Test batch processing."""
         mock_pipeline.segment.return_value = {"episodes": []}
@@ -547,6 +591,10 @@ class TestPrompts:
         assert "setting" in prompt.lower()
         assert "initiating_conditions" in prompt.lower()
         assert "escalation" in prompt.lower()
+        assert "time_period_label" in prompt
+        assert "start_date" in prompt
+        assert "date_basis" in prompt
+        assert "never invent" in prompt.lower()
         assert "json" in prompt.lower()
 
     def test_classification_prompt_structure(self):

@@ -186,7 +186,9 @@ class ExtractionOrchestrator:
 
         # Parse dates
         setting = extraction_result.get("setting", {})
-        if setting.get("time_period"):
+        if "start_date" in setting:
+            episode = self._apply_normalized_dates(episode, setting)
+        elif setting.get("time_period"):
             episode = await self._parse_dates(episode, setting["time_period"], setting.get("date_precision", "year"))
 
         # Parse actors. canonical_role passes the tau_role fit floor or stays
@@ -204,6 +206,38 @@ class ExtractionOrchestrator:
             for a in actors_data
         ]
 
+        return episode
+
+    def _apply_normalized_dates(self, episode: Episode, setting: Dict[str, Any]) -> Episode:
+        """Apply LLM-normalized partial ISO dates after deterministic validation."""
+        import calendar
+        import re
+        from datetime import datetime, timezone
+
+        def parse_partial(value: Optional[str], *, end_bound: bool) -> Optional[datetime]:
+            if value is None:
+                return None
+            match = re.fullmatch(r"(\d{4})(?:-(\d{2})(?:-(\d{2}))?)?", value)
+            if not match:
+                raise ValueError(f"invalid normalized date {value!r}")
+            year = int(match.group(1))
+            month = int(match.group(2) or (12 if end_bound else 1))
+            day = int(
+                match.group(3)
+                or (calendar.monthrange(year, month)[1] if end_bound else 1)
+            )
+            return datetime(year, month, day, tzinfo=timezone.utc)
+
+        try:
+            episode.start_date = parse_partial(setting.get("start_date"), end_bound=False)
+            episode.end_date = parse_partial(setting.get("end_date"), end_bound=True)
+            episode.date_precision = setting.get("date_precision") or "unknown"
+        except (TypeError, ValueError) as e:
+            self.logger.warning(
+                "Rejected invalid LLM-normalized date",
+                label=setting.get("time_period_label"),
+                error=str(e),
+            )
         return episode
 
     def _resolve_canonical_role(self, actor_data: Dict[str, Any]) -> Optional[str]:
@@ -303,18 +337,26 @@ class ExtractionOrchestrator:
     ) -> Episode:
         """Parse date strings into datetime objects."""
         # Simple parsing—could be enhanced with dateparser
+        import re
+
         from dateutil import parser as date_parser
 
         try:
             # Try to parse as range (e.g., "1921-1923" or "1921 to 1923")
-            if "-" in time_period or "to" in time_period:
-                parts = time_period.replace("to", "-").split("-")
-                if len(parts) >= 2:
-                    start = date_parser.parse(parts[0].strip(), fuzzy=True)
-                    end = date_parser.parse(parts[1].strip(), fuzzy=True)
-                    episode.start_date = start
-                    episode.end_date = end
-                    episode.date_precision = "range"
+            range_match = re.fullmatch(
+                r"\s*(\d{3,4})\s*[-–—]\s*(\d{3,4})\s*",
+                time_period,
+            ) or re.fullmatch(
+                r"\s*(.+?)\s+(?:to|through)\s+(.+?)\s*",
+                time_period,
+                flags=re.IGNORECASE,
+            )
+            if range_match:
+                start = date_parser.parse(range_match.group(1), fuzzy=True)
+                end = date_parser.parse(range_match.group(2), fuzzy=True)
+                episode.start_date = start
+                episode.end_date = end
+                episode.date_precision = "range"
             else:
                 # Single date
                 date = date_parser.parse(time_period, fuzzy=True)

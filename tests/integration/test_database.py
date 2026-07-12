@@ -3,19 +3,23 @@
 from datetime import datetime
 
 import pytest
+from sqlalchemy.exc import IntegrityError
 
 from narrative_engine.models import (
+    Actor,
     ArcPhase,
     ArcType,
     Continuation,
     Cycle,
     CycleScale,
     Episode,
+    SourceDocument,
+    SourceDocumentStatus,
     Thesis,
 )
 from narrative_engine.storage.config import DatabaseConfig
 from narrative_engine.storage.database import DatabaseManager
-from narrative_engine.storage.repositories import RepositoryFactory
+from narrative_engine.storage.repositories import RepositoryFactory, SourceDocumentRepository
 
 
 class TestDatabaseOperations:
@@ -44,6 +48,52 @@ class TestDatabaseOperations:
         assert retrieved is not None
         assert retrieved.title == "1929 Crash"
         assert retrieved.arc_type == ArcType.CREDIT_BOOM_AND_BUST
+
+    @pytest.mark.asyncio
+    async def test_actor_role_preserves_extraction_text_over_100_characters(self, db_session):
+        factory = RepositoryFactory(db_session)
+        role = "A detailed historical role that explains institutional position and causal involvement " * 2
+        episode = Episode(
+            title="Long actor role",
+            summary="Regression fixture",
+            actors=[Actor(name="Historical actor", role=role)],
+        )
+
+        created = await factory.episodes.create(episode)
+        retrieved = await factory.episodes.get_by_id(created.id)
+
+        assert retrieved is not None
+        assert retrieved.actors[0].role == role
+
+    @pytest.mark.asyncio
+    async def test_source_document_hash_and_filename_are_unique(self, db_session):
+        repo = SourceDocumentRepository(db_session)
+        first = SourceDocument(filename="book.txt", content_hash="a" * 64)
+        duplicate = SourceDocument(filename="book.txt", content_hash="a" * 64)
+
+        await repo.create(first)
+        with pytest.raises(IntegrityError):
+            async with db_session.begin_nested():
+                await repo.create(duplicate)
+
+    @pytest.mark.asyncio
+    async def test_only_one_active_source_document_per_content_hash(self, db_session):
+        repo = SourceDocumentRepository(db_session)
+        first = SourceDocument(filename="first.txt", content_hash="b" * 64)
+        competing = SourceDocument(filename="second.txt", content_hash="b" * 64)
+
+        await repo.create(first)
+        with pytest.raises(IntegrityError):
+            async with db_session.begin_nested():
+                await repo.create(competing)
+
+        visible_duplicate = SourceDocument(
+            filename="second.txt",
+            content_hash="b" * 64,
+            status=SourceDocumentStatus.DUPLICATE,
+            duplicate_of=first.id,
+        )
+        await repo.create(visible_duplicate)
 
     @pytest.mark.asyncio
     async def test_update_episode(self, db_session):

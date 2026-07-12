@@ -149,6 +149,10 @@ class SourceDocumentORM(Base):
     chunks_processed: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     episodes_created: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     extraction_ran: Mapped[bool] = mapped_column(default=False, nullable=False)
+    claim_token: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
+    lease_expires_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     duplicate_of: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("source_documents.id", ondelete="SET NULL"), nullable=True
     )
@@ -159,7 +163,20 @@ class SourceDocumentORM(Base):
         DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
     )
 
-    __table_args__ = (Index("ix_source_documents_status", "status"),)
+    __table_args__ = (
+        Index("ix_source_documents_status", "status"),
+        Index(
+            "uq_source_documents_active_hash",
+            "content_hash",
+            unique=True,
+            postgresql_where=(status != "duplicate"),
+        ),
+        UniqueConstraint(
+            "content_hash",
+            "filename",
+            name="uq_source_documents_hash_filename",
+        ),
+    )
 
     def __repr__(self) -> str:
         return f"<SourceDocumentORM(filename={self.filename}, status={self.status})>"
@@ -193,7 +210,7 @@ class ActorORM(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    role: Mapped[str] = mapped_column(String(100), nullable=False)
+    role: Mapped[str] = mapped_column(Text, nullable=False)
     # Controlled-vocabulary role + fit confidence (T2); NULL = unresolved
     # (below tau_role), which counts as vocabulary residue (Sec 10.5).
     canonical_role: Mapped[Optional[str]] = mapped_column(String(60), nullable=True)

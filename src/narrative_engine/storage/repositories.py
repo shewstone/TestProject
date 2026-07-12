@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import List, Optional, Sequence
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from narrative_engine.logging_config import get_logger, LogTimer
+from narrative_engine.logging_config import LogTimer, get_logger
 from narrative_engine.models import (
     Actor,
     ArcAssignment,
@@ -19,9 +20,11 @@ from narrative_engine.models import (
     CycleMembership,
     Episode,
     EpisodeLink,
+    Scope,
+    SourceDocument,
+    SourceDocumentStatus,
     Thesis,
 )
-from narrative_engine.models import Scope, SourceDocument
 from narrative_engine.storage.orm_models import (
     CycleMembershipORM,
     CycleORM,
@@ -228,6 +231,22 @@ class EpisodeRepository:
         """Get total episode count."""
         result = await self.session.execute(select(func.count(EpisodeORM.id)))
         return result.scalar() or 0
+
+    async def get_arc_types_for_chunks(self, chunk_ids: Sequence[str]) -> set:
+        """Return classified arc types sourced from any of the given chunks."""
+        wanted = set(chunk_ids)
+        if not wanted:
+            return set()
+        result = await self.session.execute(
+            select(EpisodeORM.arc_type, EpisodeORM.extracted_from).where(
+                EpisodeORM.arc_type.is_not(None)
+            )
+        )
+        return {
+            arc_type
+            for arc_type, extracted_from in result.all()
+            if wanted.intersection(extracted_from or [])
+        }
 
     def _to_orm(self, episode: Episode) -> EpisodeORM:
         """Convert Pydantic model to ORM.
@@ -779,6 +798,94 @@ class SourceDocumentRepository:
             )
         )
         return (result.scalar() or 0) > 0
+
+    async def get_by_hash_and_filename(
+        self, content_hash: str, filename: str
+    ) -> Optional[SourceDocument]:
+        result = await self.session.execute(
+            select(SourceDocumentORM)
+            .where(
+                SourceDocumentORM.content_hash == content_hash,
+                SourceDocumentORM.filename == filename,
+            )
+            .order_by(SourceDocumentORM.created_at.desc())
+            .limit(1)
+        )
+        orm_doc = result.scalar_one_or_none()
+        return self._from_orm(orm_doc) if orm_doc else None
+
+    async def claim_available(
+        self,
+        document_id: UUID,
+        claim_token: UUID,
+        lease_expires_at: datetime,
+    ) -> bool:
+        """Atomically claim queued work or replace an expired claim."""
+        result = await self.session.execute(
+            update(SourceDocumentORM)
+            .where(
+                SourceDocumentORM.id == document_id,
+                or_(
+                    SourceDocumentORM.status == "queued",
+                    and_(
+                        SourceDocumentORM.status == "processing",
+                        or_(
+                            SourceDocumentORM.lease_expires_at.is_(None),
+                            SourceDocumentORM.lease_expires_at <= func.now(),
+                        ),
+                    ),
+                ),
+            )
+            .values(
+                status="processing",
+                error=None,
+                claim_token=claim_token,
+                lease_expires_at=lease_expires_at,
+                updated_at=func.now(),
+            )
+        )
+        return getattr(result, "rowcount", 0) == 1
+
+    async def renew_claim(
+        self,
+        document_id: UUID,
+        claim_token: UUID,
+        lease_expires_at: datetime,
+    ) -> bool:
+        result = await self.session.execute(
+            update(SourceDocumentORM)
+            .where(
+                SourceDocumentORM.id == document_id,
+                SourceDocumentORM.status == "processing",
+                SourceDocumentORM.claim_token == claim_token,
+            )
+            .values(lease_expires_at=lease_expires_at, updated_at=func.now())
+        )
+        return getattr(result, "rowcount", 0) == 1
+
+    async def update_claimed(self, document: SourceDocument, claim_token: UUID) -> bool:
+        """Persist a checkpoint only while the caller still owns the claim."""
+        values = {
+            "status": document.status.value,
+            "error": document.error,
+            "chunks_created": document.chunks_created,
+            "chunks_processed": document.chunks_processed,
+            "episodes_created": document.episodes_created,
+            "extraction_ran": document.extraction_ran,
+            "duplicate_of": document.duplicate_of,
+            "updated_at": func.now(),
+        }
+        if document.status != SourceDocumentStatus.PROCESSING:
+            values.update(claim_token=None, lease_expires_at=None)
+        result = await self.session.execute(
+            update(SourceDocumentORM)
+            .where(
+                SourceDocumentORM.id == document.id,
+                SourceDocumentORM.claim_token == claim_token,
+            )
+            .values(**values)
+        )
+        return getattr(result, "rowcount", 0) == 1
 
     async def list_all(self, limit: int = 200) -> Sequence[SourceDocument]:
         result = await self.session.execute(

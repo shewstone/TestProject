@@ -9,7 +9,7 @@ from narrative_engine.extraction.config import DEFAULT_ARC_TAXONOMY, MECHANISM_D
 # Prompt versions for tracking
 PROMPT_VERSIONS = {
     "segmentation": "1.0.0",
-    "extraction": "1.1.0",  # 1.1.0: controlled role vocabulary (T2)
+    "extraction": "1.2.0",  # 1.2.0: LLM-normalized partial ISO dates
     "classification": "1.0.0",
     "linking": "1.0.0",
 }
@@ -87,8 +87,14 @@ def get_extraction_prompt(segment_text: str, segment_summary: str) -> str:
 
 4. **setting** (object):
    - location: Where it took place
-   - time_period: When (e.g., "1921-1923", "October 1929", "Q4 2008")
-   - date_precision: "year", "month", "day", or "range"
+   - time_period_label: Preserve the source's original wording for when it occurred
+   - start_date: Normalize to "YYYY", "YYYY-MM", or "YYYY-MM-DD"; null when
+     legendary, disputed, or not safely resolvable
+   - end_date: Same normalized formats, or null for a single date/unknown end
+   - date_precision: "day", "month", "year", "range", or "unknown"
+   - date_basis: "explicit", "inferred", "legendary", or "unknown"
+   - date_confidence: 0.0-1.0 confidence in the normalized date. Never invent a
+     date for mythic eras or vague labels; preserve the label and use null dates.
 
 5. **initiating_conditions** (array): What started this episode? (3-5 bullet points)
 
